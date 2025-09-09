@@ -1,4 +1,11 @@
 node_modules/
 .env
-output/*.csv
-input/*.csv
+
+# Garder les dossiers input et output mais ignorer leur contenu SAUF les CSV
+input/*
+!input/*.csv
+!input/.gitkeep
+
+output/*
+!output/*.csv
+!output/.gitkeep
