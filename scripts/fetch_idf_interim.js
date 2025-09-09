@@ -56,6 +56,7 @@ function sleep(ms){ return new Promise(r => setTimeout(r, ms)); }
     } while (page <= totalPages);
   }
 
+  // Toujours écrire le fichier
   const rows = ['siren', ...Array.from(sirens)].join('\n');
   fs.writeFileSync(OUT, rows, 'utf8');
   console.log(`\n✅ Écrit ${sirens.size} SIREN dans ${OUT} (départements 75 et 92)`);
