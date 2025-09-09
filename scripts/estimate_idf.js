@@ -5,7 +5,7 @@ const axios = require('axios');
 
 const BASE = 'https://recherche-entreprises.api.gouv.fr';
 const NAF = '78.20Z';          // intérim
-const REGION = '11';           // Île-de-France
+const DEPARTEMENTS = ['75', '92'];  // Paris et Hauts-de-Seine
 const PER_PAGE = 25;
 const SLEEP_MS = 200;
 
@@ -19,73 +19,78 @@ function sleep(ms){ return new Promise(r => setTimeout(r, ms)); }
     })
   );
 
-  console.log('📊 Estimation du volume pour IDF NAF 78.20Z...\n');
+  console.log('📊 Estimation du volume pour Paris (75) et Hauts-de-Seine (92) - NAF 78.20Z...\n');
   
   let totalCount = 0;
-  let page = 1, totalPages = 1;
+  const deptCounts = {};
   
-  do {
+  for (const dept of DEPARTEMENTS) {
+    let page = 1, totalPages = 1;
+    
     const params = {
       activite_principale: NAF,
-      region: REGION,
+      departement: dept,
       etat_administratif: 'A',
       page,
       per_page: PER_PAGE
     };
 
-    const { data } = await axios.get(`${BASE}/search`, { params, timeout: 20000 });
-    const results = data?.results || [];
-    totalPages = data?.total_pages || page;
-    totalCount = data?.total_results || totalCount + results.length;
-    
-    if (page === 1) {
-      console.log(`📍 Région : Île-de-France (11)`);
-      console.log(`🏢 Code NAF : ${NAF} (Intérim)`);
-      console.log(`📄 Total pages : ${totalPages}`);
-      console.log(`🔢 Total entreprises : ${totalCount}\n`);
-      break; // On s'arrête après la première page pour l'estimation
+    try {
+      const { data } = await axios.get(`${BASE}/search`, { params, timeout: 20000 });
+      const deptCount = data?.total_results || 0;
+      deptCounts[dept] = deptCount;
+      totalCount += deptCount;
+      
+      console.log(`📍 Département ${dept} : ${deptCount} entreprises`);
+    } catch (e) {
+      console.error(`⚠️ Erreur département ${dept}:`, e.message);
+      deptCounts[dept] = 0;
     }
     
-    page++;
     await sleep(SLEEP_MS);
-  } while (page <= totalPages);
-
-  console.log('💰 Estimation des coûts Pappers :');
+  }
+  
+  console.log(`\n🔢 Total : ${totalCount} entreprises d'intérim`);
+  console.log('\n💰 Estimation des coûts Pappers :');
   console.log(`   - Enrichissement : ${totalCount} crédits (1 crédit/entreprise)`);
   console.log(`   - Durée estimée : ~${Math.round(totalCount * 0.12 / 60)} minutes\n`);
   
   if (args.full) {
     console.log('🔄 Récupération complète en cours...');
     const sirens = new Set();
-    page = 1;
     
-    do {
-      const params = {
-        activite_principale: NAF,
-        region: REGION,
-        etat_administratif: 'A',
-        page,
-        per_page: PER_PAGE
-      };
+    for (const dept of DEPARTEMENTS) {
+      let page = 1, totalPages = 1;
+      console.log(`\n📍 Récupération département ${dept}...`);
+      
+      do {
+        const params = {
+          activite_principale: NAF,
+          departement: dept,
+          etat_administratif: 'A',
+          page,
+          per_page: PER_PAGE
+        };
 
-      const { data } = await axios.get(`${BASE}/search`, { params, timeout: 20000 });
-      const results = data?.results || [];
-      totalPages = data?.total_pages || page;
+        const { data } = await axios.get(`${BASE}/search`, { params, timeout: 20000 });
+        const results = data?.results || [];
+        totalPages = data?.total_pages || page;
 
-      for (const it of results) {
-        const siren = it?.siren || it?.siren_formate?.replace(/\D/g,'') || it?.unite_legale?.siren;
-        if (siren && /^\d{9}$/.test(String(siren))) sirens.add(String(siren));
-      }
+        for (const it of results) {
+          const siren = it?.siren || it?.siren_formate?.replace(/\D/g,'') || it?.unite_legale?.siren;
+          if (siren && /^\d{9}$/.test(String(siren))) sirens.add(String(siren));
+        }
 
-      if (page % 10 === 0) console.log(`   Page ${page}/${totalPages}...`);
-      page++;
-      await sleep(SLEEP_MS);
-    } while (page <= totalPages);
+        if (page % 10 === 0) console.log(`   Page ${page}/${totalPages}...`);
+        page++;
+        await sleep(SLEEP_MS);
+      } while (page <= totalPages);
+    }
     
     console.log(`\n✅ ${sirens.size} SIREN uniques récupérés`);
     
     if (args.save) {
-      const OUT = path.join('input', 'sirens_idf.csv');
+      const OUT = path.join('input', 'sirens_75_92.csv');
       fs.mkdirSync('input', { recursive: true });
       const rows = ['siren', ...Array.from(sirens)].join('\n');
       fs.writeFileSync(OUT, rows, 'utf8');
@@ -93,6 +98,6 @@ function sleep(ms){ return new Promise(r => setTimeout(r, ms)); }
     }
   } else {
     console.log('💡 Utilisez --full pour récupérer tous les SIREN');
-    console.log('💡 Utilisez --full --save pour sauvegarder dans input/sirens_idf.csv');
+    console.log('💡 Utilisez --full --save pour sauvegarder dans input/sirens_75_92.csv');
   }
 })();
