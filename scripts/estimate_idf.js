@@ -12,20 +12,13 @@ const SLEEP_MS = 200;
 function sleep(ms){ return new Promise(r => setTimeout(r, ms)); }
 
 (async () => {
-  const args = Object.fromEntries(
-    process.argv.slice(2).map(a => {
-      const m = a.match(/^--([^=]+)=(.*)$/);
-      return m ? [m[1], m[2]] : [a.replace(/^--/, ''), true];
-    })
-  );
-
   console.log('📊 Estimation du volume pour Paris (75) et Hauts-de-Seine (92) - NAF 78.20Z...\n');
   
   let totalCount = 0;
   const deptCounts = {};
   
   for (const dept of DEPARTEMENTS) {
-    let page = 1, totalPages = 1;
+    let page = 1;
     
     const params = {
       activite_principale: NAF,
@@ -51,53 +44,5 @@ function sleep(ms){ return new Promise(r => setTimeout(r, ms)); }
   }
   
   console.log(`\n🔢 Total : ${totalCount} entreprises d'intérim`);
-  console.log('\n💰 Estimation des coûts Pappers :');
-  console.log(`   - Enrichissement : ${totalCount} crédits (1 crédit/entreprise)`);
-  console.log(`   - Durée estimée : ~${Math.round(totalCount * 0.12 / 60)} minutes\n`);
-  
-  if (args.full) {
-    console.log('🔄 Récupération complète en cours...');
-    const sirens = new Set();
-    
-    for (const dept of DEPARTEMENTS) {
-      let page = 1, totalPages = 1;
-      console.log(`\n📍 Récupération département ${dept}...`);
-      
-      do {
-        const params = {
-          activite_principale: NAF,
-          departement: dept,
-          etat_administratif: 'A',
-          page,
-          per_page: PER_PAGE
-        };
-
-        const { data } = await axios.get(`${BASE}/search`, { params, timeout: 20000 });
-        const results = data?.results || [];
-        totalPages = data?.total_pages || page;
-
-        for (const it of results) {
-          const siren = it?.siren || it?.siren_formate?.replace(/\D/g,'') || it?.unite_legale?.siren;
-          if (siren && /^\d{9}$/.test(String(siren))) sirens.add(String(siren));
-        }
-
-        if (page % 10 === 0) console.log(`   Page ${page}/${totalPages}...`);
-        page++;
-        await sleep(SLEEP_MS);
-      } while (page <= totalPages);
-    }
-    
-    console.log(`\n✅ ${sirens.size} SIREN uniques récupérés`);
-    
-    if (args.save) {
-      const OUT = path.join('input', 'sirens_75_92.csv');
-      fs.mkdirSync('input', { recursive: true });
-      const rows = ['siren', ...Array.from(sirens)].join('\n');
-      fs.writeFileSync(OUT, rows, 'utf8');
-      console.log(`💾 Sauvegardé dans ${OUT}`);
-    }
-  } else {
-    console.log('💡 Utilisez --full pour récupérer tous les SIREN');
-    console.log('💡 Utilisez --full --save pour sauvegarder dans input/sirens_75_92.csv');
-  }
+  console.log('\n💡 Pour récupérer la liste des SIREN, utilisez : npm run fetch');
 })();
