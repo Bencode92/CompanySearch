@@ -38,8 +38,18 @@ cp .env.example .env
 
 ### 🎯 Méthode IDF avec Date Flexible (NOUVEAU)
 
-Extraction en deux étapes pour l'Île-de-France avec date paramétrable :
+#### Estimation préalable (RECOMMANDÉ)
+```bash
+# Estimer le volume et le coût avant extraction
+npm run estimate
+# -> Affiche le nombre d'entreprises et le coût estimé
 
+# Récupérer et compter tous les SIREN
+npm run estimate:full
+# -> Affiche le compte exact et peut sauvegarder avec --save
+```
+
+#### Extraction complète
 ```bash
 # 1) Récupérer tous les SIREN d'intérim en IDF (gratuit)
 npm run fetch:idf
@@ -133,6 +143,7 @@ CompanySearch/
 ├── scripts/
 │   ├── fetch_idf_interim.js         # Récupération IDF (gratuit)
 │   ├── filter_dirigeants_by_dob.js  # Filtrage flexible par date
+│   ├── estimate_idf.js              # Estimation volume et coûts IDF
 │   ├── fetch_sirens_gouv.js         # Récupération nationale (gratuit)
 │   ├── enrich_from_list.js          # Enrichissement Pappers
 │   └── build_pappers.js             # Script Pappers direct
@@ -155,9 +166,12 @@ CompanySearch/
 
 ## Exemples d'Usage
 
-### Cas 1 : Dirigeants seniors en IDF
+### Cas 1 : Dirigeants seniors en IDF avec estimation préalable
 ```bash
-# Dirigeants nés avant 1960 en Île-de-France
+# Estimer d'abord le coût
+npm run estimate
+
+# Si acceptable, lancer l'extraction
 npm run fetch:idf
 npm run filter -- --date=1959-12-31
 ```
@@ -173,6 +187,20 @@ npm run filter -- --date=1969-12-31 --out=output/annees_60.csv
 
 ### Cas 3 : Export mensuel automatisé
 Utiliser le workflow GitHub Actions avec une date personnalisée chaque mois.
+
+## Scripts Disponibles
+
+| Script | Description | Coût |
+|--------|-------------|------|
+| `npm run estimate` | Estime le volume IDF | Gratuit |
+| `npm run estimate:full` | Compte exact + option sauvegarde | Gratuit |
+| `npm run fetch:idf` | Récupère SIREN IDF | Gratuit |
+| `npm run filter` | Filtre par date de naissance | 1 crédit/entreprise |
+| `npm run build` | IDF complet (date par défaut) | 1 crédit/entreprise |
+| `npm run build:1961` | IDF dirigeants ≤1961 | 1 crédit/entreprise |
+| `npm run build:custom` | IDF avec date manuelle | 1 crédit/entreprise |
+| `npm run build:cheap` | National optimisé | 1 crédit/entreprise |
+| `npm run build:pappers` | Pappers direct | Variable |
 
 ## Notes Techniques
 
