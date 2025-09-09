@@ -11,6 +11,8 @@
     "fetch:92": "node scripts/fetch_idf_advanced.js --deps=92",
     "build": "npm run fetch:idf",
     "estimate": "node scripts/estimate_idf.js",
+    "estimate:advanced": "node scripts/estimate_idf_advanced.js",
+    "estimate:idf": "node scripts/estimate_idf_advanced.js --deps=75,77,78,91,92,93,94,95",
     "enrich": "node scripts/enrich_pappers_from_csv.js",
     "enrich:advanced": "node scripts/enrich_pappers_advanced.js",
     "enrich:seniors": "node scripts/enrich_pappers_advanced.js --date=1964-12-31",
