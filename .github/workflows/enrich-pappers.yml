@@ -1,0 +1,84 @@
+name: Enrich with Pappers Only
+
+on:
+  workflow_dispatch:
+    inputs:
+      cutoff_date:
+        description: 'Date de naissance limite (format: YYYY-MM-DD ou DD/MM/YYYY ou YYYY)'
+        required: false
+        default: '1964-12-31'
+        type: string
+      input_file:
+        description: 'Fichier CSV d'entrée (par défaut: output/sirens_interim_75_92.csv)'
+        required: false
+        default: 'output/sirens_interim_75_92.csv'
+        type: string
+
+jobs:
+  enrich:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Check if input CSV exists
+        run: |
+          if [ ! -f "${{ inputs.input_file || 'output/sirens_interim_75_92.csv' }}" ]; then
+            echo "❌ Erreur: Le fichier ${{ inputs.input_file || 'output/sirens_interim_75_92.csv' }} n'existe pas"
+            echo "📝 Lancez d'abord le workflow 'Get SIREN List Paris-92' pour générer le fichier"
+            exit 1
+          fi
+          echo "✅ Fichier trouvé: $(wc -l < "${{ inputs.input_file || 'output/sirens_interim_75_92.csv' }}") lignes"
+      
+      - name: Enrich with Pappers API
+        env:
+          PAPPERS_API_KEY: ${{ secrets.PAPPERS_API_KEY }}
+        run: |
+          if [ -z "$PAPPERS_API_KEY" ]; then
+            echo "❌ Erreur: PAPPERS_API_KEY n'est pas configuré dans les secrets GitHub"
+            echo "📝 Allez dans Settings → Secrets and variables → Actions pour l'ajouter"
+            exit 1
+          fi
+          
+          echo "🔍 Enrichissement des données avec Pappers..."
+          echo "📅 Dirigeants nés avant: ${{ inputs.cutoff_date || '1964-12-31' }}"
+          echo "📂 Fichier source: ${{ inputs.input_file || 'output/sirens_interim_75_92.csv' }}"
+          
+          node scripts/enrich_pappers_from_csv.js \
+            --date="${{ inputs.cutoff_date || '1964-12-31' }}" \
+            --in="${{ inputs.input_file || 'output/sirens_interim_75_92.csv' }}"
+      
+      - name: Show results
+        run: |
+          echo "📊 Fichiers générés:"
+          ls -lah output/dirigeants_avant_*.csv 2>/dev/null || echo "Aucun fichier généré"
+          
+          if [ -f output/dirigeants_avant_*.csv ]; then
+            echo ""
+            echo "📈 Aperçu du fichier (10 premières lignes):"
+            head -n 10 output/dirigeants_avant_*.csv
+            echo ""
+            echo "📊 Nombre total de lignes: $(wc -l < output/dirigeants_avant_*.csv)"
+          fi
+      
+      - name: Upload enriched data
+        uses: actions/upload-artifact@v4
+        with:
+          name: dirigeants-enrichis-${{ github.run_number }}
+          path: output/dirigeants_avant_*.csv
+      
+      - name: Commit enriched data
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -f output/dirigeants_avant_*.csv
+          git commit -m "🔍 Enrichissement Pappers - Dirigeants nés avant ${{ inputs.cutoff_date || '1964-12-31' }}" || echo "Pas de changements"
+          git push

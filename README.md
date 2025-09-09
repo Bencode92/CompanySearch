@@ -16,9 +16,9 @@ cd CompanySearch
 npm install
 ```
 
-## Configuration (optionnelle)
+## Configuration pour l'enrichissement
 
-Pour l'enrichissement des données avec Pappers :
+Pour utiliser l'enrichissement Pappers :
 ```bash
 cp .env.example .env
 # Éditer .env et ajouter votre clé API Pappers
@@ -26,7 +26,7 @@ cp .env.example .env
 
 ## Utilisation
 
-### 🎯 Récupérer la liste des SIREN (GRATUIT)
+### 🎯 Étape 1 : Récupérer la liste des SIREN (GRATUIT)
 
 ```bash
 # Simple et direct
@@ -35,17 +35,19 @@ npm run build
 # Ou
 npm run fetch
 
-# Résultat : input/sirens.csv
+# Résultat : output/sirens_interim_75_92.csv
 ```
 
-### 📊 Estimer le volume avant extraction
+### 📊 Estimation du volume
 
 ```bash
 # Voir combien d'entreprises seront récupérées
 npm run estimate
 ```
 
-### 🔍 Enrichir avec les données Pappers (PAYANT)
+### 🔍 Étape 2 : Enrichir avec Pappers (PAYANT)
+
+**Prérequis** : Le fichier `output/sirens_interim_75_92.csv` doit exister (créé par l'étape 1)
 
 ```bash
 # Enrichir et filtrer les dirigeants nés avant une date
@@ -56,31 +58,43 @@ npm run enrich:seniors
 
 # Exemples de ciblage par âge :
 node scripts/enrich_pappers_from_csv.js --date=1960-12-31  # 64+ ans
-node scripts/enrich_pappers_from_csv.js --date=1965-12-31  # 59+ ans
+node scripts/enrich_pappers_from_csv.js --date=1965-12-31  # 59+ ans  
 node scripts/enrich_pappers_from_csv.js --date=1970-12-31  # 54+ ans
 
 # Résultat : output/dirigeants_avant_[DATE].csv
 ```
 
-#### Format de date acceptés
+#### Formats de date acceptés
 - `YYYY-MM-DD` : 1964-12-31
 - `DD-MM-YYYY` : 31-12-1964
 - `DD/MM/YYYY` : 31/12/1964
 - `YYYY` : 1964 (= 01/01/1964)
 
-## GitHub Actions
+## GitHub Actions - Workflows
 
-### Workflow : **Get SIREN List Paris-92**
+### 1️⃣ **Get SIREN List Paris-92** (GRATUIT)
 
 - **Automatique** : tous les vendredis à 5h00 UTC
 - **Manuel** : Actions → "Get SIREN List Paris-92" → Run workflow
-- **Fichiers générés** :
-  - `input/sirens.csv` : Liste brute
-  - `output/sirens_interim_75_92.csv` : Copie dans output
+- **Génère** : `output/sirens_interim_75_92.csv`
 
-### Enrichissement automatique (optionnel)
+### 2️⃣ **Enrich with Pappers Only** (PAYANT)
 
-Si vous avez configuré `PAPPERS_API_KEY` dans les secrets GitHub, le workflow peut enrichir automatiquement les données.
+- **Manuel uniquement** : Actions → "Enrich with Pappers Only" → Run workflow
+- **Paramètres configurables** :
+  - Date de naissance limite (défaut: 1964-12-31)
+  - Fichier CSV d'entrée (défaut: output/sirens_interim_75_92.csv)
+- **Prérequis** : 
+  - Le fichier CSV doit exister (lancez d'abord le workflow 1)
+  - `PAPPERS_API_KEY` configuré dans les secrets GitHub
+- **Génère** : `output/dirigeants_avant_[DATE].csv`
+
+### Configuration des secrets GitHub
+
+1. Aller dans **Settings** → **Secrets and variables** → **Actions**
+2. Ajouter **New repository secret**
+3. Name: `PAPPERS_API_KEY`
+4. Value: Votre clé API Pappers
 
 ## Format des fichiers
 
@@ -99,15 +113,21 @@ siren;denomination;code_naf;libelle_code_naf;ville_siege;entreprise_cessee;dir_n
 ...
 ```
 
+## Workflow complet recommandé
+
+1. **Vendredi 5h** : Le workflow automatique récupère les SIREN
+2. **Enrichissement manuel** : Lancer "Enrich with Pappers Only" avec vos critères
+3. **Export** : Télécharger le CSV enrichi depuis les artifacts ou le repository
+
 ## Scripts disponibles
 
-| Script | Description | Coût |
-|--------|-------------|------|
-| `npm run fetch` | Récupère les SIREN | **GRATUIT** |
-| `npm run build` | Alias de fetch | **GRATUIT** |
-| `npm run estimate` | Estime le volume | **GRATUIT** |
-| `npm run enrich` | Enrichit avec Pappers + filtre par âge | **PAYANT** |
-| `npm run enrich:seniors` | Enrichit (dirigeants nés avant 1965) | **PAYANT** |
+| Script | Description | Coût | Prérequis |
+|--------|-------------|------|------------|
+| `npm run fetch` | Récupère les SIREN | **GRATUIT** | Aucun |
+| `npm run build` | Alias de fetch | **GRATUIT** | Aucun |
+| `npm run estimate` | Estime le volume | **GRATUIT** | Aucun |
+| `npm run enrich` | Enrichit avec Pappers | **PAYANT** | CSV existant + clé API |
+| `npm run enrich:seniors` | Enrichit (nés avant 1965) | **PAYANT** | CSV existant + clé API |
 
 ## Cas d'usage business
 
@@ -138,12 +158,13 @@ CompanySearch/
 │   ├── enrich_pappers_from_csv.js  # Enrichissement Pappers
 │   └── filter_dirigeants_by_dob.js # Filtrage par date de naissance
 ├── input/
-│   └── sirens.csv                  # Liste des SIREN
+│   └── sirens.csv                  # Liste brute des SIREN
 ├── output/
-│   ├── sirens_interim_75_92.csv    # Copie pour export
-│   └── dirigeants_avant_*.csv      # Données enrichies
+│   ├── sirens_interim_75_92.csv    # SIREN formatés pour enrichissement
+│   └── dirigeants_avant_*.csv      # Données enrichies Pappers
 └── .github/workflows/
-    └── run-idf.yml                 # Workflow GitHub Actions
+    ├── run-idf.yml                 # Workflow collecte SIREN
+    └── enrich-pappers.yml          # Workflow enrichissement seul
 ```
 
 ## Notes techniques
