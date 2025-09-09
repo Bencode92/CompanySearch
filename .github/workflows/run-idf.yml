@@ -1,4 +1,4 @@
-name: Build CSV Paris-92 Companies
+name: Get SIREN List Paris-92
 
 on:
   workflow_dispatch:
@@ -17,17 +17,17 @@ jobs:
           node-version: '20'
       - name: Install
         run: npm ci
-      - name: Fetch companies from departments 75 and 92
+      - name: Fetch SIREN from departments 75 and 92
         run: npm run fetch:75-92
-      - name: Enrich companies information (without directors)
-        run: npm run enrich:companies
-        env:
-          PAPPERS_API_KEY: ${{ secrets.PAPPERS_API_KEY }}
+      - name: Copy to output folder
+        run: |
+          mkdir -p output
+          cp input/sirens.csv output/sirens_interim_75_92.csv
       - name: Commit output
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add input/*.csv || true
           git add output/*.csv || true
-          git commit -m "update CSV entreprises intérim Paris (75) et Hauts-de-Seine (92)" || true
+          git commit -m "update SIREN list - entreprises intérim Paris (75) et Hauts-de-Seine (92)" || true
           git push
