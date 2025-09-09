@@ -19,6 +19,13 @@ jobs:
         run: npm ci
       - name: Fetch SIREN from departments 75 and 92
         run: npm run fetch
+      - name: Verify CSV was created
+        run: |
+          if [ ! -f input/sirens.csv ]; then
+            echo "❌ Erreur: input/sirens.csv n'a pas été créé"
+            exit 1
+          fi
+          echo "✅ Fichier créé avec $(wc -l < input/sirens.csv) lignes"
       - name: Copy to output folder
         run: |
           mkdir -p output
