@@ -1,0 +1,68 @@
+name: Get SIREN + Enrich with Pappers
+
+on:
+  workflow_dispatch:
+    inputs:
+      cutoff_date:
+        description: 'Date de naissance limite (format: YYYY-MM-DD)'
+        required: false
+        default: '1964-12-31'
+        type: string
+
+jobs:
+  fetch-and-enrich:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Fetch SIREN from departments 75 and 92
+        run: npm run fetch
+      
+      - name: Verify CSV was created
+        run: |
+          if [ ! -f input/sirens.csv ]; then
+            echo "❌ Erreur: input/sirens.csv n'a pas été créé"
+            exit 1
+          fi
+          echo "✅ Fichier créé avec $(wc -l < input/sirens.csv) lignes"
+      
+      - name: Copy to output folder
+        run: |
+          mkdir -p output
+          cp input/sirens.csv output/sirens_interim_75_92.csv
+      
+      - name: Enrich with Pappers (if API key is set)
+        if: ${{ secrets.PAPPERS_API_KEY != '' }}
+        env:
+          PAPPERS_API_KEY: ${{ secrets.PAPPERS_API_KEY }}
+        run: |
+          echo "🔍 Enrichissement avec Pappers (dirigeants nés avant ${{ inputs.cutoff_date || '1964-12-31' }})..."
+          node scripts/enrich_pappers_from_csv.js --date=${{ inputs.cutoff_date || '1964-12-31' }}
+      
+      - name: List generated files
+        run: |
+          echo "📁 Fichiers générés:"
+          ls -la output/
+      
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: company-data-enriched
+          path: |
+            output/*.csv
+      
+      - name: Commit results
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -f output/*.csv
+          git commit -m "Update SIREN list and enriched data (cutoff: ${{ inputs.cutoff_date || '1964-12-31' }})" || echo "No changes to commit"
+          git push

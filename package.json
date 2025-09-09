@@ -2,13 +2,17 @@
   "name": "paris92-interim-siren",
   "private": true,
   "version": "1.0.0",
-  "description": "Extraction SIREN entreprises d'intérim (NAF 78.20Z) départements 75 et 92",
+  "description": "Extraction SIREN entreprises d'intérim (NAF 78.20Z) départements 75 et 92 avec enrichissement Pappers",
   "scripts": {
     "fetch": "node scripts/fetch_idf_interim.js",
     "build": "npm run fetch",
-    "estimate": "node scripts/estimate_idf.js"
+    "estimate": "node scripts/estimate_idf.js",
+    "enrich": "node scripts/enrich_pappers_from_csv.js",
+    "enrich:seniors": "node scripts/enrich_pappers_from_csv.js --date=1964-12-31",
+    "enrich:custom": "node scripts/enrich_pappers_from_csv.js"
   },
   "dependencies": {
-    "axios": "^1.7.4"
+    "axios": "^1.7.4",
+    "dotenv": "^16.4.5"
   }
 }
