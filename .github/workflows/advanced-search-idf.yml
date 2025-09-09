@@ -1,0 +1,216 @@
+name: Advanced Company Search IDF
+
+on:
+  workflow_dispatch:
+    inputs:
+      departments:
+        description: 'Départements (ex: 75,92,93 ou all pour tout IDF)'
+        required: false
+        default: 'all'
+      naf_codes:
+        description: 'Codes NAF (ex: 78.20Z,78.30Z)'
+        required: false
+        default: '78.20Z'
+      enrich:
+        description: 'Enrichir avec Pappers'
+        type: boolean
+        default: false
+      cutoff_date:
+        description: 'Date limite dirigeants (YYYY-MM-DD)'
+        required: false
+        default: ''
+      ca_min:
+        description: 'CA minimum (€)'
+        required: false
+        default: '0'
+      ca_max:
+        description: 'CA maximum (€, 0=illimité)'
+        required: false
+        default: '0'
+      effectif_min:
+        description: 'Effectif minimum'
+        required: false
+        default: '0'
+      effectif_max:
+        description: 'Effectif maximum (0=illimité)'
+        required: false
+        default: '0'
+      format:
+        description: 'Format export (csv, json, xlsx)'
+        required: false
+        default: 'csv'
+      batch_size:
+        description: 'Limite de résultats (0=tout)'
+        required: false
+        default: '0'
+
+  schedule:
+    # Tous les vendredis à 5h UTC
+    - cron: '0 5 * * 5'
+
+jobs:
+  fetch-and-enrich:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          
+      - name: Install dependencies
+        run: |
+          npm ci
+          # Optionnel : installer xlsx pour support Excel
+          npm install xlsx --save-dev || true
+          
+      - name: Parse departments input
+        id: parse_deps
+        shell: bash
+        run: |
+          DEPS="${{ github.event.inputs.departments }}"
+          if [ -z "$DEPS" ] || [ "$DEPS" = "all" ]; then
+            DEPS="75,77,78,91,92,93,94,95"
+          fi
+          echo "departments=$DEPS" >> $GITHUB_OUTPUT
+          
+      - name: Fetch SIREN data
+        id: fetch
+        run: |
+          echo "🔎 Collecte des SIREN..."
+          echo "📍 Départements: ${{ steps.parse_deps.outputs.departments }}"
+          echo "📋 Codes NAF: ${{ github.event.inputs.naf_codes || '78.20Z' }}"
+          
+          node scripts/fetch_idf_advanced.js \
+            --deps="${{ steps.parse_deps.outputs.departments }}" \
+            --naf="${{ github.event.inputs.naf_codes || '78.20Z' }}" \
+            --format="${{ github.event.inputs.format || 'csv' }}" \
+            --batch="${{ github.event.inputs.batch_size || '0' }}" \
+            --timestamp
+            
+          # Trouver le fichier généré
+          SIREN_FILE=$(ls -t output/sirens_*.csv 2>/dev/null | head -n1 || echo "")
+          if [ -z "$SIREN_FILE" ]; then
+            SIREN_FILE=$(ls -t output/sirens_*.json 2>/dev/null | head -n1 || echo "")
+          fi
+          
+          if [ -z "$SIREN_FILE" ]; then
+            echo "❌ Aucun fichier SIREN généré"
+            exit 1
+          fi
+          
+          echo "✅ Fichier SIREN: $SIREN_FILE"
+          echo "siren_file=$SIREN_FILE" >> $GITHUB_OUTPUT
+          
+          # Stats
+          if [[ "$SIREN_FILE" == *.csv ]]; then
+            COUNT=$(tail -n +2 "$SIREN_FILE" | wc -l)
+          else
+            COUNT=$(grep -c '"siren"' "$SIREN_FILE" || echo "0")
+          fi
+          echo "📊 Total: $COUNT SIREN"
+          
+      - name: Enrich with Pappers (if requested)
+        if: github.event.inputs.enrich == 'true' && env.PAPPERS_API_KEY != ''
+        env:
+          PAPPERS_API_KEY: ${{ secrets.PAPPERS_API_KEY }}
+        run: |
+          echo "🚀 Enrichissement Pappers..."
+          
+          # Construire les arguments
+          ARGS="--in=${{ steps.fetch.outputs.siren_file }}"
+          ARGS="$ARGS --format=${{ github.event.inputs.format || 'csv' }}"
+          ARGS="$ARGS --batch=100 --concurrent=3"
+          
+          if [ -n "${{ github.event.inputs.cutoff_date }}" ]; then
+            ARGS="$ARGS --date=${{ github.event.inputs.cutoff_date }}"
+          fi
+          
+          if [ "${{ github.event.inputs.ca_min }}" != "0" ]; then
+            ARGS="$ARGS --ca_min=${{ github.event.inputs.ca_min }}"
+          fi
+          
+          if [ "${{ github.event.inputs.ca_max }}" != "0" ]; then
+            ARGS="$ARGS --ca_max=${{ github.event.inputs.ca_max }}"
+          fi
+          
+          if [ "${{ github.event.inputs.effectif_min }}" != "0" ]; then
+            ARGS="$ARGS --effectif_min=${{ github.event.inputs.effectif_min }}"
+          fi
+          
+          if [ "${{ github.event.inputs.effectif_max }}" != "0" ]; then
+            ARGS="$ARGS --effectif_max=${{ github.event.inputs.effectif_max }}"
+          fi
+          
+          node scripts/enrich_pappers_advanced.js $ARGS
+          
+      - name: Show results
+        shell: bash
+        run: |
+          echo "📂 Contenu du dossier output:"
+          ls -lah output/ || true
+          
+          echo ""
+          echo "📊 Résumé des fichiers générés:"
+          for file in output/*; do
+            if [ -f "$file" ]; then
+              echo "  - $(basename "$file"): $(wc -l < "$file") lignes"
+            fi
+          done
+          
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: company-data-${{ github.run_number }}
+          path: output/
+          retention-days: 30
+          
+      - name: Commit results
+        if: github.event_name == 'schedule' || github.event.inputs.enrich == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          
+          # Forcer l'ajout malgré le .gitignore
+          git add -f output/*.csv output/*.json output/*.xlsx 2>/dev/null || true
+          
+          # Message de commit descriptif
+          if [ "${{ github.event.inputs.enrich }}" = "true" ]; then
+            MSG="Enrichissement Pappers"
+          else
+            MSG="Collecte SIREN"
+          fi
+          
+          MSG="$MSG - Depts: ${{ steps.parse_deps.outputs.departments }}"
+          MSG="$MSG - NAF: ${{ github.event.inputs.naf_codes || '78.20Z' }}"
+          
+          git commit -m "$MSG" || echo "Pas de changements"
+          git push || true
+          
+      - name: Create summary
+        run: |
+          echo "# 📊 Résultats Company Search" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          echo "## Paramètres" >> $GITHUB_STEP_SUMMARY
+          echo "- **Départements**: ${{ steps.parse_deps.outputs.departments }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Codes NAF**: ${{ github.event.inputs.naf_codes || '78.20Z' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Format**: ${{ github.event.inputs.format || 'csv' }}" >> $GITHUB_STEP_SUMMARY
+          
+          if [ "${{ github.event.inputs.enrich }}" = "true" ]; then
+            echo "- **Enrichissement**: ✅ Activé" >> $GITHUB_STEP_SUMMARY
+            [ -n "${{ github.event.inputs.cutoff_date }}" ] && echo "- **Date cutoff**: ${{ github.event.inputs.cutoff_date }}" >> $GITHUB_STEP_SUMMARY
+            [ "${{ github.event.inputs.ca_min }}" != "0" ] && echo "- **CA min**: ${{ github.event.inputs.ca_min }} €" >> $GITHUB_STEP_SUMMARY
+            [ "${{ github.event.inputs.ca_max }}" != "0" ] && echo "- **CA max**: ${{ github.event.inputs.ca_max }} €" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Fichiers générés" >> $GITHUB_STEP_SUMMARY
+          for file in output/*; do
+            if [ -f "$file" ]; then
+              echo "- \`$(basename "$file")\`: $(wc -l < "$file") lignes" >> $GITHUB_STEP_SUMMARY
+            fi
+          done
