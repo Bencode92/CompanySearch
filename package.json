@@ -4,6 +4,8 @@
   "version": "1.0.0",
   "description": "Extraction boîtes d'intérim (NAF 78.20Z) Île-de-France avec filtrage flexible par date de naissance",
   "scripts": {
+    "estimate": "node scripts/estimate_idf.js",
+    "estimate:full": "node scripts/estimate_idf.js --full",
     "fetch:idf": "node scripts/fetch_idf_interim.js",
     "filter": "node scripts/filter_dirigeants_by_dob.js",
     "build": "npm run fetch:idf && node scripts/filter_dirigeants_by_dob.js --date=1962-12-31",
