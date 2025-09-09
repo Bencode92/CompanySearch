@@ -1,0 +1,30 @@
+name: Build CSV intérim <=1961
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 5 * * 1" # chaque lundi 05:00 UTC
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install
+        run: npm ci
+      - name: Build
+        run: npm run build
+        env:
+          PAPPERS_API_KEY: ${{ secrets.PAPPERS_API_KEY }}
+      - name: Commit output
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add output/*.csv || true
+          git commit -m "update CSV (interim <=1961)" || true
+          git push
