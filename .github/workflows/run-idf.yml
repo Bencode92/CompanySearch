@@ -30,11 +30,24 @@ jobs:
         run: |
           mkdir -p output
           cp input/sirens.csv output/sirens_interim_75_92.csv
+      - name: List files for verification
+        run: |
+          echo "📁 Contenu du dossier input:"
+          ls -la input/
+          echo "📁 Contenu du dossier output:"
+          ls -la output/
+      - name: Upload CSV as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sirens_75_92
+          path: |
+            input/sirens.csv
+            output/sirens_interim_75_92.csv
       - name: Commit output
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add input/*.csv || true
-          git add output/*.csv || true
-          git commit -m "update SIREN list - entreprises intérim Paris (75) et Hauts-de-Seine (92)" || true
+          git add -f input/*.csv
+          git add -f output/*.csv
+          git commit -m "update SIREN list - entreprises intérim Paris (75) et Hauts-de-Seine (92)" || echo "No changes to commit"
           git push
