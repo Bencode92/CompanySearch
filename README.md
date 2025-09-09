@@ -2,12 +2,12 @@
 
 ## Description
 
-Ce projet Node.js extrait les entreprises d'intérim (NAF 78.20Z) et leurs dirigeants selon différents critères géographiques et temporels.
+Ce projet Node.js extrait les entreprises d'intérim (NAF 78.20Z) et leurs dirigeants selon différents critères géographiques.
 
-**Trois approches disponibles :**
-1. **IDF Flexible** : Focus Île-de-France avec filtrage par date paramétrable
-2. **National Optimisé** : France entière avec recherche gratuite puis enrichissement
-3. **Pappers Direct** : Utilise uniquement l'API Pappers (plus simple mais plus coûteux)
+**Principales fonctionnalités :**
+1. **IDF Complet** : Toutes les entreprises d'intérim d'Île-de-France avec TOUS leurs dirigeants
+2. **IDF Filtré** : Entreprises IDF avec filtrage par date de naissance des dirigeants
+3. **National** : France entière avec différentes approches
 
 ## Installation locale
 
@@ -36,26 +36,33 @@ cp .env.example .env
 
 ## Utilisation
 
-### 🎯 Méthode IDF avec Date Flexible (NOUVEAU)
+### 🎯 Méthode IDF - TOUS les dirigeants (PRINCIPAL)
 
-#### Estimation préalable (RECOMMANDÉ)
+Extraction complète de toutes les entreprises d'intérim en Île-de-France avec TOUS leurs dirigeants :
+
 ```bash
-# Estimer le volume et le coût avant extraction
+# Estimation préalable (RECOMMANDÉ)
 npm run estimate
 # -> Affiche le nombre d'entreprises et le coût estimé
 
-# Récupérer et compter tous les SIREN
-npm run estimate:full
-# -> Affiche le compte exact et peut sauvegarder avec --save
+# Extraction complète en 2 étapes :
+npm run fetch:idf    # 1) Récupère les SIREN (gratuit)
+npm run enrich:idf   # 2) Enrichit avec Pappers (1 crédit/entreprise)
+
+# Ou tout-en-un :
+npm run build:idf
+# -> output/idf_interim_all_dirigeants.csv
 ```
 
-#### Extraction complète
-```bash
-# 1) Récupérer tous les SIREN d'intérim en IDF (gratuit)
-npm run fetch:idf
-# -> input/sirens.csv
+### 📅 Méthode IDF avec Filtrage par Date
 
-# 2) Filtrer par date de naissance (consomme 1 crédit/entreprise)
+Pour filtrer les dirigeants par date de naissance :
+
+```bash
+# Récupérer les SIREN IDF
+npm run fetch:idf
+
+# Filtrer par date
 npm run filter -- --date=1962-12-31
 
 # Formats de date acceptés :
@@ -65,13 +72,7 @@ npm run filter -- --date=1962-12-31
 # --date=1962          (année seule)
 # --date=12/1962       (mois/année)
 
-# Ou tout-en-un avec date par défaut (1962-12-31) :
-npm run build
-```
-
-**Options avancées :**
-```bash
-# Spécifier les fichiers d'entrée/sortie
+# Ou avec options avancées :
 npm run filter -- --date=1965-06-30 --in=custom/list.csv --out=results/seniors.csv
 ```
 
@@ -82,15 +83,7 @@ npm run filter -- --date=1965-06-30 --in=custom/list.csv --out=results/seniors.c
 npm run build:cheap
 # -> input/sirens.csv puis output/interim_dirigeants_<=1962.csv
 
-# Ou en deux étapes :
-npm run fetch:free  # API gouvernementale (gratuit)
-npm run enrich      # Enrichissement Pappers
-```
-
-### 💰 Méthode Pappers Direct
-
-```bash
-# Tout via Pappers (plus coûteux mais plus précis)
+# Ou Pappers direct (plus coûteux)
 npm run build:pappers
 # -> output/interim_dirigeants_<=1961.csv
 ```
@@ -104,25 +97,31 @@ npm run build:pappers
 
 ### Workflows Disponibles
 
-#### 1. **IDF avec Date Flexible** (`run-idf.yml`)
-- **Automatique** : tous les vendredis à 5h00 UTC (date par défaut : 1962-12-31)
-- **Manuel** : Actions → "Build CSV IDF flexible date" → Run workflow
-  - Paramètre `date` : permet de spécifier une date personnalisée
-- **Exemple** : Lancer avec date=1965-12-31 pour avoir les dirigeants nés avant 1966
+#### 1. **IDF All Directors** (`run-idf.yml`) - PRINCIPAL
+- **Automatique** : tous les vendredis à 5h00 UTC
+- **Manuel** : Actions → "Build CSV IDF All Directors" → Run workflow
+- **Résultat** : TOUTES les entreprises d'intérim IDF avec TOUS leurs dirigeants
+- **Fichier** : `output/idf_interim_all_dirigeants.csv`
 
-#### 2. **National Optimisé** (`run-optimized.yml`)
+#### 2. **IDF avec Filtrage Date** (`run-idf-filtered.yml`)
+- **Manuel uniquement** : Actions → "Build CSV IDF with Date Filter" → Run workflow
+- **Paramètre** : `date` - spécifier la date limite (ex: 1962-12-31)
+- **Résultat** : Dirigeants nés avant la date spécifiée
+- **Fichier** : `output/dirigeants_avant_[date].csv`
+
+#### 3. **National Optimisé** (`run-optimized.yml`)
 - **Automatique** : tous les mercredis à 5h00 UTC
 - **Manuel** : Actions → "Build CSV optimized (free search)" → Run workflow
 - Utilise l'API gouvernementale gratuite puis Pappers
 
-#### 3. **Pappers Direct** (`run.yml`)
+#### 4. **Pappers Direct** (`run.yml`)
 - **Automatique** : tous les lundis à 5h00 UTC
 - **Manuel** : Actions → "Build CSV intérim <=1961" → Run workflow
 - Utilise uniquement l'API Pappers
 
-## Structure du CSV
+## Structure des CSV
 
-Les fichiers CSV générés contiennent :
+### CSV IDF Complet (`idf_interim_all_dirigeants.csv`)
 - `siren` : Numéro SIREN de l'entreprise
 - `denomination` : Nom de l'entreprise
 - `code_naf` : Code NAF (78.20Z pour l'intérim)
@@ -132,7 +131,11 @@ Les fichiers CSV générés contiennent :
 - `dir_prenom` : Prénom du dirigeant
 - `dir_qualite` : Fonction du dirigeant
 - `dir_date_naissance` : Date de naissance
-- `comparaison` : (IDF uniquement) Précision sur la comparaison de date
+- `dir_nationalite` : Nationalité
+- `dir_ville_naissance` : Ville de naissance
+
+### CSV Filtré par Date
+Mêmes colonnes + `comparaison` : Précision sur la comparaison de date
 
 Séparateur : `;` (compatible Excel français)
 
@@ -141,52 +144,22 @@ Séparateur : `;` (compatible Excel français)
 ```
 CompanySearch/
 ├── scripts/
-│   ├── fetch_idf_interim.js         # Récupération IDF (gratuit)
-│   ├── filter_dirigeants_by_dob.js  # Filtrage flexible par date
-│   ├── estimate_idf.js              # Estimation volume et coûts IDF
+│   ├── fetch_idf_interim.js         # Récupération SIREN IDF (gratuit)
+│   ├── enrich_idf_all.js            # Enrichissement IDF complet
+│   ├── filter_dirigeants_by_dob.js  # Filtrage par date de naissance
+│   ├── estimate_idf.js              # Estimation volume et coûts
 │   ├── fetch_sirens_gouv.js         # Récupération nationale (gratuit)
-│   ├── enrich_from_list.js          # Enrichissement Pappers
+│   ├── enrich_from_list.js          # Enrichissement national
 │   └── build_pappers.js             # Script Pappers direct
 ├── input/                            # SIREN récupérés (étape 1)
 ├── output/                           # CSV finaux
 ├── .github/workflows/
-│   ├── run-idf.yml                  # Workflow IDF flexible
+│   ├── run-idf.yml                  # Workflow IDF complet
+│   ├── run-idf-filtered.yml         # Workflow IDF avec filtre date
 │   ├── run-optimized.yml            # Workflow national optimisé
 │   └── run.yml                      # Workflow Pappers direct
 └── package.json                     # Scripts npm et dépendances
 ```
-
-## Comparaison des Méthodes
-
-| Méthode | Zone | Filtrage Date | Coût | Avantages |
-|---------|------|---------------|------|-----------|
-| **IDF Flexible** | Île-de-France | ✅ Paramétrable | 1 crédit/fiche | • Focus régional<br>• Date flexible<br>• Économique |
-| **National Optimisé** | France entière | Fixe (1962) | 1 crédit/fiche | • Couverture nationale<br>• Économique |
-| **Pappers Direct** | France entière | Fixe (1961) | ~0.1 crédit/résultat + 1 crédit/fiche | • Plus précis<br>• Un seul appel API |
-
-## Exemples d'Usage
-
-### Cas 1 : Dirigeants seniors en IDF avec estimation préalable
-```bash
-# Estimer d'abord le coût
-npm run estimate
-
-# Si acceptable, lancer l'extraction
-npm run fetch:idf
-npm run filter -- --date=1959-12-31
-```
-
-### Cas 2 : Analyse par décennie
-```bash
-# Années 50
-npm run filter -- --date=1959-12-31 --out=output/annees_50.csv
-
-# Années 60
-npm run filter -- --date=1969-12-31 --out=output/annees_60.csv
-```
-
-### Cas 3 : Export mensuel automatisé
-Utiliser le workflow GitHub Actions avec une date personnalisée chaque mois.
 
 ## Scripts Disponibles
 
@@ -195,12 +168,37 @@ Utiliser le workflow GitHub Actions avec une date personnalisée chaque mois.
 | `npm run estimate` | Estime le volume IDF | Gratuit |
 | `npm run estimate:full` | Compte exact + option sauvegarde | Gratuit |
 | `npm run fetch:idf` | Récupère SIREN IDF | Gratuit |
+| `npm run enrich:idf` | Enrichit TOUS les dirigeants IDF | 1 crédit/entreprise |
+| `npm run build:idf` | IDF complet (fetch + enrich) | 1 crédit/entreprise |
 | `npm run filter` | Filtre par date de naissance | 1 crédit/entreprise |
-| `npm run build` | IDF complet (date par défaut) | 1 crédit/entreprise |
-| `npm run build:1961` | IDF dirigeants ≤1961 | 1 crédit/entreprise |
-| `npm run build:custom` | IDF avec date manuelle | 1 crédit/entreprise |
+| `npm run build:filtered` | IDF avec filtre date (1962) | 1 crédit/entreprise |
 | `npm run build:cheap` | National optimisé | 1 crédit/entreprise |
 | `npm run build:pappers` | Pappers direct | Variable |
+
+## Exemples d'Usage
+
+### Cas 1 : Export complet IDF
+```bash
+# Estimer d'abord
+npm run estimate
+
+# Si OK, lancer l'extraction complète
+npm run build:idf
+```
+
+### Cas 2 : Analyse par génération
+```bash
+# D'abord récupérer les SIREN
+npm run fetch:idf
+
+# Puis filtrer par décennie
+npm run filter -- --date=1959-12-31 --out=output/annees_50.csv
+npm run filter -- --date=1969-12-31 --out=output/annees_60.csv
+npm run filter -- --date=1979-12-31 --out=output/annees_70.csv
+```
+
+### Cas 3 : Suivi mensuel automatisé
+Utiliser le workflow GitHub Actions "Build CSV IDF All Directors" pour un export mensuel complet.
 
 ## Notes Techniques
 
@@ -208,13 +206,11 @@ Utiliser le workflow GitHub Actions avec une date personnalisée chaque mois.
 - **API gouvernementale** : 7 requêtes/seconde, pagination à 25 résultats
 - **API Pappers** : Throttling intégré (120ms entre requêtes)
 
-### Gestion des Dates
-- Comparaison flexible : dates complètes, partielles (année/mois) ou année seule
-- Format français et ISO acceptés
-- Gestion prudente des dates partielles (assume 1er janvier/mois)
-
 ### Région Île-de-France
 Code région `11` couvre les départements : 75, 77, 78, 91, 92, 93, 94, 95
+
+### Volume estimé
+En Île-de-France, il y a environ plusieurs centaines d'entreprises d'intérim actives. Utilisez `npm run estimate` pour connaître le nombre exact et le coût avant de lancer l'extraction.
 
 ## Support
 
