@@ -1,0 +1,13 @@
+{
+  "name": "interim-dirigeants-1961",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Extraction boîtes d'intérim (NAF 78.20Z) avec dirigeants nés avant 1962 -> CSV",
+  "scripts": {
+    "build": "node scripts/build_pappers.js"
+  },
+  "dependencies": {
+    "axios": "^1.7.4",
+    "dotenv": "^16.4.5"
+  }
+}
