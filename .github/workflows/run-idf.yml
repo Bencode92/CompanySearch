@@ -18,7 +18,7 @@ jobs:
       - name: Install
         run: npm ci
       - name: Fetch SIREN from departments 75 and 92
-        run: npm run fetch:75-92
+        run: npm run fetch
       - name: Copy to output folder
         run: |
           mkdir -p output
