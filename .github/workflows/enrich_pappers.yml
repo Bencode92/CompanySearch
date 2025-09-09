@@ -1,0 +1,90 @@
+name: Enrich with Pappers Only
+
+on:
+  workflow_dispatch:
+    inputs:
+      cutoff_date:
+        description: 'Date limite (YYYY-MM-DD, DD/MM/YYYY ou YYYY)'
+        required: false
+        default: '1964-12-31'
+      input_file:
+        description: 'CSV d'entrée (par défaut: output/sirens_interim_75_92.csv)'
+        required: false
+        default: 'output/sirens_interim_75_92.csv'
+
+jobs:
+  enrich:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    env:
+      CUTOFF_DATE: ${{ github.event.inputs.cutoff_date }}
+      INPUT_FILE:  ${{ github.event.inputs.input_file }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Resolve inputs with defaults
+        id: vars
+        shell: bash
+        run: |
+          CUTOFF="${CUTOFF_DATE:-1964-12-31}"
+          INFILE="${INPUT_FILE:-output/sirens_interim_75_92.csv}"
+          echo "cutoff=$CUTOFF" >> $GITHUB_OUTPUT
+          echo "infile=$INFILE" >> $GITHUB_OUTPUT
+
+      - name: Check input CSV exists
+        run: |
+          if [ ! -f "${{ steps.vars.outputs.infile }}" ]; then
+            echo "❌ ${{ steps.vars.outputs.infile }} introuvable. Lance d'abord le workflow qui génère la liste SIREN."
+            exit 1
+          fi
+          echo "✅ Fichier trouvé: ${{ steps.vars.outputs.infile }} (lignes: $(wc -l < "${{ steps.vars.outputs.infile }}"))"
+
+      - name: Enrich with Pappers API
+        env:
+          PAPPERS_API_KEY: ${{ secrets.PAPPERS_API_KEY }}
+        run: |
+          if [ -z "$PAPPERS_API_KEY" ]; then
+            echo "❌ Secret PAPPERS_API_KEY manquant."
+            echo "➡️  Ajoute-le dans Settings → Secrets and variables → Actions."
+            exit 1
+          fi
+
+          node scripts/enrich_pappers_from_csv.js \
+            --date="${{ steps.vars.outputs.cutoff }}" \
+            --in="${{ steps.vars.outputs.infile }}"
+
+      - name: Show results
+        shell: bash
+        run: |
+          ls -lah output || true
+          FINAL=$(ls output/dirigeants_avant_*.csv 2>/dev/null | head -n1 || true)
+          if [ -z "$FINAL" ]; then
+            echo "❌ Aucun fichier généré."
+            exit 1
+          fi
+          echo "📄 Fichier: $FINAL"
+          head -n 10 "$FINAL"
+          echo "Total: $(wc -l < "$FINAL") lignes"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dirigeants-enrichis-${{ github.run_number }}
+          path: output/dirigeants_avant_*.csv
+
+      - name: Commit CSV to repo
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -f output/dirigeants_avant_*.csv
+          git commit -m "Enrichissement Pappers - cutoff ${{ steps.vars.outputs.cutoff }}" || echo "Pas de changements"
+          git push || true
