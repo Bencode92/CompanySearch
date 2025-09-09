@@ -1,0 +1,116 @@
+name: Enrich Senior Directors Simple
+
+on:
+  workflow_dispatch:
+  
+  schedule:
+    # Tous les lundis à 6h UTC (après la collecte du vendredi)
+    - cron: '0 6 * * 1'
+
+jobs:
+  enrich-seniors:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          
+      - name: Install dependencies
+        run: npm ci
+        
+      - name: Check if SIREN file exists
+        id: check_file
+        run: |
+          if [ ! -f "output/sirens_interim_75_92.csv" ]; then
+            echo "❌ ERREUR : Fichier sirens_interim_75_92.csv introuvable !"
+            echo "👉 Lancez d'abord le workflow 'Get SIREN List Paris-92'"
+            exit 1
+          fi
+          
+          COUNT=$(tail -n +2 "output/sirens_interim_75_92.csv" | wc -l)
+          echo "✅ Fichier trouvé : $COUNT SIREN à enrichir"
+          echo "siren_count=$COUNT" >> $GITHUB_OUTPUT
+          
+      - name: Enrichissement Pappers - Dirigeants Seniors
+        env:
+          PAPPERS_API_KEY: ${{ secrets.PAPPERS_API_KEY }}
+        run: |
+          if [ -z "$PAPPERS_API_KEY" ]; then
+            echo "❌ Secret PAPPERS_API_KEY manquant !"
+            echo "👉 Allez dans Settings → Secrets → Actions → New repository secret"
+            exit 1
+          fi
+          
+          echo "🚀 Lancement de l'enrichissement..."
+          echo "🎯 Cible : Dirigeants nés avant 1962 (62 ans et plus)"
+          echo ""
+          
+          node scripts/enrich_seniors_simple.js
+          
+      - name: Afficher les résultats
+        run: |
+          echo ""
+          echo "📊 RÉSULTATS"
+          echo "═══════════════════════════════════"
+          
+          if [ -f "output/dirigeants_seniors_enrichis.csv" ]; then
+            LINES=$(tail -n +2 "output/dirigeants_seniors_enrichis.csv" | wc -l)
+            echo "✅ $LINES dirigeants seniors trouvés"
+            echo ""
+            echo "📄 Aperçu des 5 premiers résultats :"
+            echo "───────────────────────────────────"
+            head -n 6 "output/dirigeants_seniors_enrichis.csv"
+          else
+            echo "⚠️ Aucun fichier de résultat généré"
+          fi
+          
+      - name: Upload résultats
+        uses: actions/upload-artifact@v4
+        with:
+          name: dirigeants-seniors-${{ github.run_number }}
+          path: output/dirigeants_seniors_enrichis.csv
+          retention-days: 90
+          
+      - name: Commit résultats
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          
+          # Forcer l'ajout malgré le .gitignore
+          git add -f output/dirigeants_seniors_enrichis.csv
+          
+          # Message de commit avec date
+          DATE=$(date +%Y-%m-%d)
+          git commit -m "Enrichissement dirigeants seniors - $DATE" || echo "Pas de changements"
+          git push || true
+          
+      - name: Créer un résumé
+        run: |
+          echo "# 📊 Enrichissement Dirigeants Seniors" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## 🎯 Critères" >> $GITHUB_STEP_SUMMARY
+          echo "- **Départements** : Paris (75) et Hauts-de-Seine (92)" >> $GITHUB_STEP_SUMMARY
+          echo "- **Secteur** : Intérim (NAF 78.20Z)" >> $GITHUB_STEP_SUMMARY
+          echo "- **Cible** : Dirigeants nés avant 1962 (62 ans et plus)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [ -f "output/dirigeants_seniors_enrichis.csv" ]; then
+            TOTAL=$(tail -n +2 "output/dirigeants_seniors_enrichis.csv" | wc -l)
+            echo "## ✅ Résultats" >> $GITHUB_STEP_SUMMARY
+            echo "- **Dirigeants seniors trouvés** : $TOTAL" >> $GITHUB_STEP_SUMMARY
+            echo "- **Fichier** : \`output/dirigeants_seniors_enrichis.csv\`" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### 💼 Données collectées par dirigeant :" >> $GITHUB_STEP_SUMMARY
+            echo "- Société et SIREN" >> $GITHUB_STEP_SUMMARY
+            echo "- Chiffre d'affaires et Résultat" >> $GITHUB_STEP_SUMMARY
+            echo "- Nom, prénom et fonction du dirigeant" >> $GITHUB_STEP_SUMMARY
+            echo "- Année de naissance et âge actuel" >> $GITHUB_STEP_SUMMARY
+            echo "- Ville du siège, Code NAF, Effectif" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "## ⚠️ Aucun résultat" >> $GITHUB_STEP_SUMMARY
+          fi
