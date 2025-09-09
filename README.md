@@ -1,188 +1,118 @@
-# CompanySearch - Extraction données entreprises intérim Paris & Hauts-de-Seine
+# CompanySearch - Liste SIREN entreprises intérim Paris & Hauts-de-Seine
 
 ## Description
 
-Ce projet Node.js extrait les entreprises d'intérim (NAF 78.20Z) des départements **75 (Paris)** et **92 (Hauts-de-Seine)** avec toutes leurs informations d'entreprise (sans les dirigeants).
+Ce projet récupère la liste des numéros SIREN de **TOUTES les entreprises d'intérim** (NAF 78.20Z) des départements :
+- **75** : Paris
+- **92** : Hauts-de-Seine
 
-## Installation locale
+⚠️ **Aucune clé API requise** - Utilise uniquement l'API gouvernementale gratuite
 
-### Prérequis
-- Node.js 18+
-- Une clé API Pappers (obtenir sur https://www.pappers.fr/api)
+## Installation
 
-### Configuration
-
-1. Cloner le repo :
 ```bash
 git clone https://github.com/Bencode92/CompanySearch.git
 cd CompanySearch
-```
-
-2. Installer les dépendances :
-```bash
 npm install
 ```
 
-3. Configurer votre clé API :
-```bash
-cp .env.example .env
-# Éditer .env et remplacer votre_cle_api_pappers_ici par votre vraie clé
-```
+## Utilisation
 
-## Utilisation Principale
-
-### 🎯 Extraction Entreprises Paris (75) & Hauts-de-Seine (92)
+### 🎯 Récupérer la liste des SIREN
 
 ```bash
-# Extraction complète en 2 étapes :
-npm run fetch:75-92      # 1) Récupère les SIREN (gratuit via API gouv)
-npm run enrich:companies # 2) Enrichit avec toutes les infos entreprises (1 crédit/entreprise)
-
-# Ou tout-en-un :
+# Simple et direct
 npm run build
-# -> output/entreprises_interim_75_92.csv
+
+# Ou
+npm run fetch
+
+# Résultat : input/sirens.csv
 ```
 
-### 📊 Estimation préalable (RECOMMANDÉ)
+### 📊 Estimer le volume avant extraction
 
 ```bash
-# Estimer le volume et le coût avant extraction
+# Voir combien d'entreprises seront récupérées
 npm run estimate
-# -> Affiche le nombre d'entreprises et le coût estimé
 ```
 
 ## GitHub Actions
 
-### Workflow Principal : **Build CSV Paris-92 Companies**
+### Workflow : **Get SIREN List Paris-92**
 
 - **Automatique** : tous les vendredis à 5h00 UTC
-- **Manuel** : Actions → "Build CSV Paris-92 Companies" → Run workflow
-- **Résultat** : Entreprises d'intérim des départements 75 et 92
-- **Fichier généré** : `output/entreprises_interim_75_92.csv`
+- **Manuel** : Actions → "Get SIREN List Paris-92" → Run workflow
+- **Fichiers générés** :
+  - `input/sirens.csv` : Liste brute
+  - `output/sirens_interim_75_92.csv` : Copie dans output
 
-### Configuration
+### ✅ Ce workflow fait :
+1. Récupère TOUS les SIREN d'entreprises d'intérim
+2. Départements 75 et 92 uniquement
+3. Entreprises actives uniquement
+4. Sauvegarde dans un fichier CSV
 
-1. Dans votre repo GitHub : **Settings → Secrets and variables → Actions**
-2. Créer un secret `PAPPERS_API_KEY` avec votre clé API
+### ❌ Ce workflow NE fait PAS :
+- Pas d'enrichissement des données
+- Pas d'informations sur les dirigeants
+- Pas besoin de clé API Pappers
+- Pas de coût
 
-## Structure du CSV
+## Format du fichier CSV
 
-Le fichier CSV généré contient toutes les informations de l'entreprise :
+Le fichier contient une simple liste de numéros SIREN :
+```csv
+siren
+123456789
+987654321
+...
+```
 
-### Informations générales
-- `siren` : Numéro SIREN
-- `denomination` : Nom de l'entreprise
-- `sigle` : Sigle
-- `forme_juridique` : Forme juridique (SAS, SARL, etc.)
-- `code_naf` : Code NAF (78.20Z)
-- `libelle_code_naf` : Libellé du code NAF
-
-### Effectifs et dates
-- `effectif` : Nombre d'employés
-- `tranche_effectif` : Tranche d'effectif
-- `date_creation` : Date de création
-- `date_cessation` : Date de cessation (si applicable)
-- `entreprise_cessee` : Statut (oui/non)
-- `categorie_entreprise` : PME, ETI, etc.
-
-### Localisation siège
-- `adresse_siege` : Adresse du siège
-- `code_postal_siege` : Code postal
-- `ville_siege` : Ville
-- `departement_siege` : Département
-
-### Données financières
-- `chiffre_affaires` : Chiffre d'affaires
-- `resultat` : Résultat net
-
-### Autres informations
-- `nb_etablissements` : Nombre total d'établissements
-- `nb_etablissements_actifs` : Nombre d'établissements actifs
-- `convention_collective` : Convention collective appliquée
-- `site_web` : Site web
-- `telephone` : Téléphone
-- `email` : Email
-
-Séparateur : `;` (compatible Excel français)
-
-## Scripts Disponibles
+## Scripts disponibles
 
 | Script | Description | Coût |
 |--------|-------------|------|
-| `npm run fetch:75-92` | Récupère SIREN Paris & 92 | Gratuit |
-| `npm run enrich:companies` | Enrichit avec infos entreprises | 1 crédit/entreprise |
-| `npm run build` | Processus complet (fetch + enrich) | 1 crédit/entreprise |
-| `npm run estimate` | Estime le volume | Gratuit |
+| `npm run fetch` | Récupère les SIREN | **GRATUIT** |
+| `npm run build` | Alias de fetch | **GRATUIT** |
+| `npm run estimate` | Estime le volume | **GRATUIT** |
 
-### Scripts optionnels (avec dirigeants)
-
-Si vous avez besoin des informations sur les dirigeants :
-
-| Script | Description |
-|--------|-------------|
-| `npm run enrich:with-directors` | Enrichit AVEC les dirigeants |
-| `npm run build:with-directors` | Complet avec dirigeants |
-| `npm run filter` | Filtre dirigeants par date de naissance |
-
-## Structure des Fichiers
+## Structure des fichiers
 
 ```
 CompanySearch/
 ├── scripts/
-│   ├── fetch_idf_interim.js         # Récupération SIREN 75 & 92 (gratuit)
-│   ├── enrich_companies_only.js     # Enrichissement entreprises SANS dirigeants
-│   ├── enrich_idf_all.js            # (Optionnel) Avec dirigeants
-│   ├── filter_dirigeants_by_dob.js  # (Optionnel) Filtrage par date
-│   └── estimate_idf.js              # Estimation volume et coûts
-├── input/                            # SIREN récupérés (étape 1)
-├── output/                           # CSV finaux
-├── .github/workflows/
-│   ├── run-idf.yml                  # Workflow principal Paris-92
-│   └── run-idf-filtered.yml         # (Optionnel) Avec filtre date
-└── package.json                     # Scripts npm et dépendances
+│   ├── fetch_idf_interim.js    # Script principal
+│   └── estimate_idf.js         # Estimation du volume
+├── input/
+│   └── sirens.csv              # Liste des SIREN
+├── output/
+│   └── sirens_interim_75_92.csv # Copie pour export
+└── .github/workflows/
+    └── run-idf.yml             # Workflow GitHub Actions
 ```
 
-## Exemples d'Usage
+## Exemple de sortie
 
-### Cas 1 : Export standard entreprises
-```bash
-# Estimation préalable
-npm run estimate
-
-# Si OK, lancer l'extraction
-npm run build
-# -> output/entreprises_interim_75_92.csv
+Après exécution, vous obtenez un fichier CSV simple :
+```
+siren
+850123456
+751234567
+920987654
+...
 ```
 
-### Cas 2 : Export avec dirigeants (optionnel)
-```bash
-npm run fetch:75-92
-npm run enrich:with-directors
-# -> output/idf_interim_all_dirigeants.csv
-```
+## Notes techniques
 
-### Cas 3 : Filtrage par date de naissance (optionnel)
-```bash
-npm run fetch:75-92
-npm run filter -- --date=1962-12-31
-# -> output/dirigeants_avant_19621231.csv
-```
-
-## Notes Techniques
-
-### Limites API
-- **API gouvernementale** : 7 requêtes/seconde, pagination à 25 résultats
-- **API Pappers** : Throttling intégré (120ms entre requêtes)
-
-### Zone géographique
-- **Département 75** : Paris
-- **Département 92** : Hauts-de-Seine
-
-### Volume estimé
-Les départements 75 et 92 concentrent une part importante des entreprises d'intérim en France. Utilisez `npm run estimate` pour connaître le nombre exact et le coût avant de lancer l'extraction.
+- **API utilisée** : API Recherche d'entreprises (gouvernementale)
+- **Limite** : 7 requêtes/seconde
+- **Pagination** : 25 résultats par page
+- **Filtre NAF** : 78.20Z (Activités des agences de travail temporaire)
+- **Zone** : Départements 75 et 92 uniquement
+- **Statut** : Entreprises actives uniquement
 
 ## Support
 
-- API Pappers : https://www.pappers.fr/api/documentation
 - API Recherche d'entreprises : https://api.gouv.fr/les-api/api-recherche-entreprises
 - Issues : https://github.com/Bencode92/CompanySearch/issues
