@@ -1,12 +1,7 @@
-name: Build CSV IDF flexible date
+name: Build CSV IDF All Directors
 
 on:
   workflow_dispatch:
-    inputs:
-      date:
-        description: 'Date limite (ex: 1962-12-31, 31-12-1962, 1962)'
-        required: true
-        default: '1962-12-31'
   schedule:
     - cron: "0 5 * * 5" # chaque vendredi 05:00 UTC
 
@@ -24,13 +19,8 @@ jobs:
         run: npm ci
       - name: Fetch IDF companies
         run: npm run fetch:idf
-      - name: Filter by date
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            npm run filter -- --date="${{ github.event.inputs.date }}"
-          else
-            npm run filter -- --date=1962-12-31
-          fi
+      - name: Enrich all companies with all directors
+        run: npm run enrich:idf
         env:
           PAPPERS_API_KEY: ${{ secrets.PAPPERS_API_KEY }}
       - name: Commit output
@@ -39,5 +29,5 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add input/*.csv || true
           git add output/*.csv || true
-          git commit -m "update CSV IDF (dirigeants avant ${{ github.event.inputs.date || '1962-12-31' }})" || true
+          git commit -m "update CSV IDF intérim - tous les dirigeants" || true
           git push
