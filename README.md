@@ -1,12 +1,17 @@
-# CompanySearch - Liste SIREN entreprises intérim Paris & Hauts-de-Seine
+# CompanySearch 2.0 - Extraction B2B Île-de-France
+
+## 🚀 Nouveautés v2.0
+
+- ✅ **Toute l'Île-de-France** : 8 départements (75, 77, 78, 91, 92, 93, 94, 95)
+- ✅ **Multi-NAF** : Ciblez plusieurs codes NAF simultanément
+- ✅ **Filtres avancés** : CA, effectifs, villes, âge des dirigeants
+- ✅ **Traitement par batch** : Optimisé pour gros volumes
+- ✅ **Multi-formats** : Export CSV, JSON, Excel
+- ✅ **Requêtes parallèles** : Enrichissement jusqu'à 5x plus rapide
 
 ## Description
 
-Ce projet récupère la liste des numéros SIREN de **TOUTES les entreprises d'intérim** (NAF 78.20Z) des départements :
-- **75** : Paris
-- **92** : Hauts-de-Seine
-
-Avec possibilité d'**enrichissement des données** via l'API Pappers (dirigeants, informations entreprise).
+Outil professionnel de prospection B2B pour extraire et enrichir les données d'entreprises en Île-de-France. Combine l'API gouvernementale gratuite avec l'enrichissement Pappers pour un ciblage précis des dirigeants.
 
 ## Installation
 
@@ -14,138 +19,182 @@ Avec possibilité d'**enrichissement des données** via l'API Pappers (dirigeant
 git clone https://github.com/Bencode92/CompanySearch.git
 cd CompanySearch
 npm install
+
+# Optionnel : support Excel
+npm install xlsx
 ```
 
-## Configuration pour l'enrichissement
+## Configuration
 
-Pour utiliser l'enrichissement Pappers :
 ```bash
 cp .env.example .env
 # Éditer .env et ajouter votre clé API Pappers
 ```
 
-## Utilisation
+## Utilisation rapide
 
-### 🎯 Étape 1 : Récupérer la liste des SIREN (GRATUIT)
-
-```bash
-# Simple et direct
-npm run build
-
-# Ou
-npm run fetch
-
-# Résultat : output/sirens_interim_75_92.csv
-```
-
-### 📊 Estimation du volume
+### 🎯 Cas d'usage classiques
 
 ```bash
-# Voir combien d'entreprises seront récupérées
-npm run estimate
-```
+# 1. Intérim sur toute l'IDF (défaut)
+npm run fetch:idf
 
-### 🔍 Étape 2 : Enrichir avec Pappers (PAYANT)
+# 2. Conseil (70.22Z) sur Paris uniquement
+node scripts/fetch_idf_advanced.js --deps=75 --naf=70.22Z
 
-**Prérequis** : Le fichier `output/sirens_interim_75_92.csv` doit exister (créé par l'étape 1)
+# 3. Multi-secteurs sur Hauts-de-Seine
+node scripts/fetch_idf_advanced.js --deps=92 --naf=78.20Z,78.30Z,70.22Z
 
-```bash
-# Enrichir et filtrer les dirigeants nés avant une date
-npm run enrich -- --date=1964-12-31
-
-# Cibler les dirigeants seniors (par défaut: nés avant 1965)
+# 4. Enrichissement dirigeants seniors (60+ ans)
 npm run enrich:seniors
 
-# Exemples de ciblage par âge :
-node scripts/enrich_pappers_from_csv.js --date=1960-12-31  # 64+ ans
-node scripts/enrich_pappers_from_csv.js --date=1965-12-31  # 59+ ans  
-node scripts/enrich_pappers_from_csv.js --date=1970-12-31  # 54+ ans
+# 5. Filtrage par CA (entreprises > 1M€)
+node scripts/enrich_pappers_advanced.js --ca_min=1000000
 
-# Résultat : output/dirigeants_avant_[DATE].csv
+# 6. Export Excel avec tous les filtres
+node scripts/fetch_idf_advanced.js --format=xlsx --deps=75,92
+node scripts/enrich_pappers_advanced.js --format=xlsx --date=1965-12-31
 ```
 
-#### Formats de date acceptés
-- `YYYY-MM-DD` : 1964-12-31
-- `DD-MM-YYYY` : 31-12-1964
-- `DD/MM/YYYY` : 31/12/1964
-- `YYYY` : 1964 (= 01/01/1964)
+## Scripts avancés
 
-## GitHub Actions - Workflows
+### 📊 Script de collecte avancé
 
-### 1️⃣ **Get SIREN List Paris-92** (GRATUIT)
+```bash
+node scripts/fetch_idf_advanced.js [options]
 
-- **Automatique** : tous les vendredis à 5h00 UTC
-- **Manuel** : Actions → "Get SIREN List Paris-92" → Run workflow
-- **Génère** : `output/sirens_interim_75_92.csv`
+OPTIONS :
+  --deps=75,92,93        Départements (défaut: tous IDF)
+  --naf=78.20Z,78.30Z    Codes NAF séparés par virgules
+  --format=csv|json|xlsx Format de sortie
+  --batch=1000           Limite de résultats
+  --timestamp            Ajoute la date au nom du fichier
+  --help                 Affiche l'aide
+```
 
-### 2️⃣ **Enrich with Pappers Only** (PAYANT)
+### 💎 Script d'enrichissement avancé
 
-- **Manuel uniquement** : Actions → "Enrich with Pappers Only" → Run workflow
-- **Paramètres configurables** :
-  - Date de naissance limite (défaut: 1964-12-31)
-  - Fichier CSV d'entrée (défaut: output/sirens_interim_75_92.csv)
-- **Prérequis** : 
-  - Le fichier CSV doit exister (lancez d'abord le workflow 1)
-  - `PAPPERS_API_KEY` configuré dans les secrets GitHub
-- **Génère** : `output/dirigeants_avant_[DATE].csv`
+```bash
+node scripts/enrich_pappers_advanced.js [options]
 
-### Configuration des secrets GitHub
+OPTIONS :
+  --in=fichier.csv       Fichier d'entrée
+  --date=1965-12-31      Date cutoff dirigeants
+  --format=csv|json|xlsx Format de sortie
+  --batch=100            Taille des batchs
+  --concurrent=3         Requêtes parallèles
+  
+FILTRES :
+  --ca_min=1000000       CA minimum
+  --ca_max=10000000      CA maximum
+  --effectif_min=10      Effectif minimum
+  --effectif_max=500     Effectif maximum
+  --ville=paris,lyon     Villes du siège
+  --inactive=true        Inclure cessées
+```
 
-1. Aller dans **Settings** → **Secrets and variables** → **Actions**
-2. Ajouter **New repository secret**
-3. Name: `PAPPERS_API_KEY`
-4. Value: Votre clé API Pappers
+## GitHub Actions Workflow
 
-## Format des fichiers
+### 🤖 Workflow unifié "Advanced Company Search IDF"
 
-### CSV des SIREN (gratuit)
+**Déclenchement** :
+- Manuel avec paramètres personnalisables
+- Automatique tous les vendredis à 5h UTC
+
+**Paramètres disponibles** :
+- `departments` : Départements ou "all" pour toute l'IDF
+- `naf_codes` : Codes NAF (virgules)
+- `enrich` : Activer l'enrichissement Pappers
+- `cutoff_date` : Date limite pour l'âge
+- `ca_min/max` : Filtres CA
+- `effectif_min/max` : Filtres effectifs
+- `format` : csv, json ou xlsx
+- `batch_size` : Limite de résultats
+
+## Codes NAF courants
+
+| Code | Secteur |
+|------|---------|
+| **78.20Z** | Agences d'intérim |
+| **78.30Z** | Autres RH |
+| **70.22Z** | Conseil entreprise |
+| **62.01Z** | Programmation informatique |
+| **62.02A** | Conseil informatique |
+| **73.11Z** | Agences publicité |
+| **69.20Z** | Expertise comptable |
+| **46.** | Commerce de gros |
+| **47.** | Commerce de détail |
+
+## Format des exports
+
+### CSV enrichi
 ```csv
-siren
-123456789
-987654321
-...
+siren;denomination;code_naf;libelle_code_naf;ville_siege;code_postal;
+entreprise_cessee;date_creation;forme_juridique;tranche_ca;tranche_effectif;
+chiffre_affaires;effectif;dir_nom;dir_prenom;dir_qualite;dir_date_naissance;dir_age_actuel
 ```
 
-### CSV enrichi Pappers (payant)
-```csv
-siren;denomination;code_naf;libelle_code_naf;ville_siege;entreprise_cessee;dir_nom;dir_prenom;dir_qualite;dir_date_naissance;dir_age_estime_au_cutoff
-123456789;INTERIM PLUS;78.20Z;Activités des agences de travail temporaire;PARIS;non;DUPONT;Jean;Président;15/03/1960;64
-...
+### JSON structuré
+```json
+{
+  "metadata": {
+    "date_export": "2025-09-09T16:00:00Z",
+    "total_dirigeants": 450,
+    "filtres": { ... }
+  },
+  "dirigeants": [ ... ]
+}
 ```
-
-## Workflow complet recommandé
-
-1. **Vendredi 5h** : Le workflow automatique récupère les SIREN
-2. **Enrichissement manuel** : Lancer "Enrich with Pappers Only" avec vos critères
-3. **Export** : Télécharger le CSV enrichi depuis les artifacts ou le repository
-
-## Scripts disponibles
-
-| Script | Description | Coût | Prérequis |
-|--------|-------------|------|------------|
-| `npm run fetch` | Récupère les SIREN | **GRATUIT** | Aucun |
-| `npm run build` | Alias de fetch | **GRATUIT** | Aucun |
-| `npm run estimate` | Estime le volume | **GRATUIT** | Aucun |
-| `npm run enrich` | Enrichit avec Pappers | **PAYANT** | CSV existant + clé API |
-| `npm run enrich:seniors` | Enrichit (nés avant 1965) | **PAYANT** | CSV existant + clé API |
 
 ## Cas d'usage business
 
-### 🎯 Prospection commerciale ciblée
-- **Succession d'entreprise** : Identifier les dirigeants proches de la retraite
-- **Services seniors** : Proposer des solutions adaptées aux dirigeants âgés
-- **Transmission/Reprise** : Cibler les entreprises en phase de transition
-
-### 📊 Segmentation par âge des dirigeants
+### 🎯 Ciblage par secteur
 ```bash
-# Baby-boomers (nés avant 1965)
---date=1964-12-31
+# Toutes les ESN d'IDF
+node scripts/fetch_idf_advanced.js --naf=62.01Z,62.02A
 
-# Proche retraite (60+ ans)
---date=1965-12-31  
+# Agences de pub parisiennes
+node scripts/fetch_idf_advanced.js --deps=75 --naf=73.11Z
+```
 
-# Seniors (55+ ans)
---date=1970-12-31
+### 👴 Succession d'entreprise
+```bash
+# Dirigeants 60+ ans, entreprises > 2M€ CA
+node scripts/enrich_pappers_advanced.js \
+  --date=1965-12-31 \
+  --ca_min=2000000
+```
+
+### 🏢 Grandes entreprises uniquement
+```bash
+# Effectif > 50, CA > 5M€
+node scripts/enrich_pappers_advanced.js \
+  --effectif_min=50 \
+  --ca_min=5000000
+```
+
+### 📍 Ciblage géographique
+```bash
+# La Défense et environs
+node scripts/fetch_idf_advanced.js --deps=92
+node scripts/enrich_pappers_advanced.js \
+  --ville=puteaux,courbevoie,nanterre,"la defense"
+```
+
+## Performance et optimisation
+
+### ⚡ Traitement rapide
+```bash
+# Batch important + parallélisation
+node scripts/enrich_pappers_advanced.js \
+  --batch=200 \
+  --concurrent=5
+```
+
+### 📦 Échantillonnage
+```bash
+# Limiter à 1000 entreprises pour test
+node scripts/fetch_idf_advanced.js --batch=1000
 ```
 
 ## Structure des fichiers
@@ -153,38 +202,55 @@ siren;denomination;code_naf;libelle_code_naf;ville_siege;entreprise_cessee;dir_n
 ```
 CompanySearch/
 ├── scripts/
-│   ├── fetch_idf_interim.js        # Script principal (GRATUIT)
-│   ├── estimate_idf.js             # Estimation du volume
-│   ├── enrich_pappers_from_csv.js  # Enrichissement Pappers
-│   └── filter_dirigeants_by_dob.js # Filtrage par date de naissance
-├── input/
-│   └── sirens.csv                  # Liste brute des SIREN
+│   ├── fetch_idf_advanced.js       # Collecte multi-départements/NAF
+│   ├── enrich_pappers_advanced.js  # Enrichissement avec filtres
+│   ├── fetch_idf_interim.js        # Script original (Paris + 92)
+│   └── enrich_pappers_from_csv.js  # Enrichissement basique
 ├── output/
-│   ├── sirens_interim_75_92.csv    # SIREN formatés pour enrichissement
-│   └── dirigeants_avant_*.csv      # Données enrichies Pappers
+│   ├── sirens_*.csv                # SIREN collectés
+│   ├── dirigeants_*.csv            # Données enrichies
+│   └── *.json / *.xlsx             # Autres formats
 └── .github/workflows/
-    ├── run-idf.yml                 # Workflow collecte SIREN
-    └── enrich-pappers.yml          # Workflow enrichissement seul
+    ├── advanced-search-idf.yml      # Workflow principal v2
+    └── [anciens workflows]          # Compatibilité
 ```
 
-## Notes techniques
+## Tarification API
 
-### API Gouvernementale (GRATUITE)
-- **API utilisée** : API Recherche d'entreprises
-- **Limite** : 7 requêtes/seconde
-- **Pagination** : 25 résultats par page
-- **Filtre NAF** : 78.20Z (Activités des agences de travail temporaire)
-- **Zone** : Départements 75 et 92 uniquement
-- **Statut** : Entreprises actives uniquement
+### API Gouvernementale (GRATUIT)
+- Limite : 7 requêtes/seconde
+- Aucun coût
 
-### API Pappers (PAYANTE)
-- **Tarification** : Voir https://www.pappers.fr/api
-- **Limite** : Selon votre plan
-- **Données** : Dirigeants, informations entreprise, dates de naissance
-- **Throttling** : 120ms entre chaque requête
+### API Pappers (PAYANT)
+- Voir [pappers.fr/api](https://www.pappers.fr/api)
+- ~0.01€ à 0.05€ par entreprise selon le plan
+
+## Conformité légale
+
+⚠️ **RGPD** : Le traitement de données personnelles (dates de naissance) nécessite :
+- Base légale (intérêt légitime pour prospection B2B)
+- Information des personnes concernées si contact
+- Registre des traitements
+- Sécurisation des données
 
 ## Support
 
-- API Recherche d'entreprises : https://api.gouv.fr/les-api/api-recherche-entreprises
-- API Pappers : https://www.pappers.fr/api
-- Issues : https://github.com/Bencode92/CompanySearch/issues
+- Issues : [GitHub Issues](https://github.com/Bencode92/CompanySearch/issues)
+- API Gouv : [api.gouv.fr](https://api.gouv.fr/les-api/api-recherche-entreprises)
+- API Pappers : [pappers.fr/api](https://www.pappers.fr/api)
+
+## Changelog
+
+### v2.0.0 (09/09/2025)
+- ✨ Support complet Île-de-France (8 départements)
+- ✨ Codes NAF multiples et paramétrables
+- ✨ Filtres avancés (CA, effectifs, villes)
+- ✨ Traitement par batch optimisé
+- ✨ Export multi-formats (CSV, JSON, Excel)
+- ✨ Requêtes parallèles pour performance
+- ✨ Workflow GitHub Actions unifié
+
+### v1.0.0
+- Version initiale (Paris + Hauts-de-Seine)
+- Code NAF 78.20Z uniquement
+- Export CSV simple
