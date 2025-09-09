@@ -1,13 +1,18 @@
 {
-  "name": "interim-dirigeants-1962",
+  "name": "idf-interim-dirigeants",
   "private": true,
   "version": "1.0.0",
-  "description": "Extraction boîtes d'intérim (NAF 78.20Z) avec dirigeants nés avant 1963 -> CSV",
+  "description": "Extraction boîtes d'intérim (NAF 78.20Z) Île-de-France avec filtrage flexible par date de naissance",
   "scripts": {
-    "build": "node scripts/build_pappers.js",
+    "fetch:idf": "node scripts/fetch_idf_interim.js",
+    "filter": "node scripts/filter_dirigeants_by_dob.js",
+    "build": "npm run fetch:idf && node scripts/filter_dirigeants_by_dob.js --date=1962-12-31",
+    "build:1961": "npm run fetch:idf && node scripts/filter_dirigeants_by_dob.js --date=1961-12-31",
+    "build:custom": "npm run fetch:idf && npm run filter",
     "fetch:free": "node scripts/fetch_sirens_gouv.js",
     "enrich": "node scripts/enrich_from_list.js",
-    "build:cheap": "npm run fetch:free && npm run enrich"
+    "build:cheap": "npm run fetch:free && npm run enrich",
+    "build:pappers": "node scripts/build_pappers.js"
   },
   "dependencies": {
     "axios": "^1.7.4",
