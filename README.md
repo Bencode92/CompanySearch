@@ -2,11 +2,12 @@
 
 ## Description
 
-Ce projet Node.js extrait les entreprises d'intérim (NAF 78.20Z) ayant au moins un dirigeant né avant 1963, et génère un fichier CSV avec les informations détaillées.
+Ce projet Node.js extrait les entreprises d'intérim (NAF 78.20Z) et leurs dirigeants selon différents critères géographiques et temporels.
 
-**Deux méthodes disponibles :**
-- **Standard** : Utilise uniquement l'API Pappers (plus simple, mais consomme plus de crédits)
-- **Optimisée** : Utilise l'API gouvernementale gratuite pour la recherche, puis Pappers uniquement pour l'enrichissement (économise des crédits)
+**Trois approches disponibles :**
+1. **IDF Flexible** : Focus Île-de-France avec filtrage par date paramétrable
+2. **National Optimisé** : France entière avec recherche gratuite puis enrichissement
+3. **Pappers Direct** : Utilise uniquement l'API Pappers (plus simple mais plus coûteux)
 
 ## Installation locale
 
@@ -33,50 +34,85 @@ cp .env.example .env
 # Éditer .env et remplacer votre_cle_api_pappers_ici par votre vraie clé
 ```
 
-### Utilisation
+## Utilisation
 
-#### Méthode Standard (Pappers uniquement)
+### 🎯 Méthode IDF avec Date Flexible (NOUVEAU)
+
+Extraction en deux étapes pour l'Île-de-France avec date paramétrable :
+
 ```bash
+# 1) Récupérer tous les SIREN d'intérim en IDF (gratuit)
+npm run fetch:idf
+# -> input/sirens.csv
+
+# 2) Filtrer par date de naissance (consomme 1 crédit/entreprise)
+npm run filter -- --date=1962-12-31
+
+# Formats de date acceptés :
+# --date=1962-12-31    (ISO)
+# --date=31-12-1962    (FR)
+# --date=31/12/1962    (FR avec /)
+# --date=1962          (année seule)
+# --date=12/1962       (mois/année)
+
+# Ou tout-en-un avec date par défaut (1962-12-31) :
 npm run build
-# Génère : output/interim_dirigeants_<=1961.csv
-# Coût : ~0.1 crédit par résultat de recherche + 1 crédit par fiche
 ```
 
-#### Méthode Optimisée (API gouv + Pappers)
+**Options avancées :**
 ```bash
+# Spécifier les fichiers d'entrée/sortie
+npm run filter -- --date=1965-06-30 --in=custom/list.csv --out=results/seniors.csv
+```
+
+### 📍 Méthode National France Entière
+
+```bash
+# Approche optimisée (recherche gratuite + enrichissement)
 npm run build:cheap
-# Ou séparément :
-npm run fetch:free  # Récupère les SIREN via l'API gouvernementale (gratuit)
-npm run enrich      # Enrichit via Pappers
-# Génère : input/sirens.csv puis output/interim_dirigeants_<=1962.csv  
-# Coût : 1 crédit Pappers par fiche uniquement
+# -> input/sirens.csv puis output/interim_dirigeants_<=1962.csv
+
+# Ou en deux étapes :
+npm run fetch:free  # API gouvernementale (gratuit)
+npm run enrich      # Enrichissement Pappers
+```
+
+### 💰 Méthode Pappers Direct
+
+```bash
+# Tout via Pappers (plus coûteux mais plus précis)
+npm run build:pappers
+# -> output/interim_dirigeants_<=1961.csv
 ```
 
 ## Automatisation avec GitHub Actions
 
-### Configuration
+### Configuration des Secrets
 
-1. Dans votre repo GitHub, aller dans **Settings → Secrets and variables → Actions**
-2. Cliquer sur **New repository secret**
-3. Créer un secret nommé `PAPPERS_API_KEY` avec votre clé API comme valeur
+1. Dans votre repo GitHub : **Settings → Secrets and variables → Actions**
+2. Créer un secret `PAPPERS_API_KEY` avec votre clé API
 
-### Workflows disponibles
+### Workflows Disponibles
 
-#### 1. Build CSV intérim <=1961 (Standard)
-- **Automatique** : tous les lundis à 5h00 UTC
-- **Manuel** : Actions → Build CSV intérim <=1961 → Run workflow
-- Utilise la méthode standard (Pappers uniquement)
+#### 1. **IDF avec Date Flexible** (`run-idf.yml`)
+- **Automatique** : tous les vendredis à 5h00 UTC (date par défaut : 1962-12-31)
+- **Manuel** : Actions → "Build CSV IDF flexible date" → Run workflow
+  - Paramètre `date` : permet de spécifier une date personnalisée
+- **Exemple** : Lancer avec date=1965-12-31 pour avoir les dirigeants nés avant 1966
 
-#### 2. Build CSV optimized (Économique)
+#### 2. **National Optimisé** (`run-optimized.yml`)
 - **Automatique** : tous les mercredis à 5h00 UTC
-- **Manuel** : Actions → Build CSV optimized (free search) → Run workflow
-- Utilise la méthode optimisée (API gouv + Pappers)
+- **Manuel** : Actions → "Build CSV optimized (free search)" → Run workflow
+- Utilise l'API gouvernementale gratuite puis Pappers
 
-Les CSV sont automatiquement commités dans le dossier `output/`.
+#### 3. **Pappers Direct** (`run.yml`)
+- **Automatique** : tous les lundis à 5h00 UTC
+- **Manuel** : Actions → "Build CSV intérim <=1961" → Run workflow
+- Utilise uniquement l'API Pappers
 
 ## Structure du CSV
 
-Le fichier CSV généré contient les colonnes suivantes :
+Les fichiers CSV générés contiennent :
 - `siren` : Numéro SIREN de l'entreprise
 - `denomination` : Nom de l'entreprise
 - `code_naf` : Code NAF (78.20Z pour l'intérim)
@@ -86,55 +122,74 @@ Le fichier CSV généré contient les colonnes suivantes :
 - `dir_prenom` : Prénom du dirigeant
 - `dir_qualite` : Fonction du dirigeant
 - `dir_date_naissance` : Date de naissance
-- `dir_age_estime` : Âge estimé
+- `comparaison` : (IDF uniquement) Précision sur la comparaison de date
 
-Le fichier utilise le séparateur `;` pour une meilleure compatibilité avec Excel en français.
+Séparateur : `;` (compatible Excel français)
 
-## Structure des fichiers
+## Structure des Fichiers
 
 ```
 CompanySearch/
 ├── scripts/
-│   ├── build_pappers.js       # Script standard (Pappers uniquement)
-│   ├── fetch_sirens_gouv.js   # Récupération gratuite des SIREN
-│   └── enrich_from_list.js    # Enrichissement via Pappers
-├── input/                      # Liste des SIREN (méthode optimisée)
-├── output/                     # CSV générés
+│   ├── fetch_idf_interim.js         # Récupération IDF (gratuit)
+│   ├── filter_dirigeants_by_dob.js  # Filtrage flexible par date
+│   ├── fetch_sirens_gouv.js         # Récupération nationale (gratuit)
+│   ├── enrich_from_list.js          # Enrichissement Pappers
+│   └── build_pappers.js             # Script Pappers direct
+├── input/                            # SIREN récupérés (étape 1)
+├── output/                           # CSV finaux
 ├── .github/workflows/
-│   ├── run.yml                 # Workflow standard
-│   └── run-optimized.yml       # Workflow optimisé
-└── package.json               # Scripts npm et dépendances
+│   ├── run-idf.yml                  # Workflow IDF flexible
+│   ├── run-optimized.yml            # Workflow national optimisé
+│   └── run.yml                      # Workflow Pappers direct
+└── package.json                     # Scripts npm et dépendances
 ```
 
-## Comparaison des méthodes
+## Comparaison des Méthodes
 
-| Méthode | Avantages | Inconvénients | Coût estimé |
-|---------|-----------|---------------|-------------|
-| **Standard** | • Simple<br>• Un seul script<br>• Filtrage précis Pappers | • Plus coûteux en crédits | ~0.1 crédit/résultat + 1 crédit/fiche |
-| **Optimisée** | • Économique<br>• Recherche gratuite | • 2 étapes<br>• Peut inclure des faux positifs | 1 crédit/fiche uniquement |
+| Méthode | Zone | Filtrage Date | Coût | Avantages |
+|---------|------|---------------|------|-----------|
+| **IDF Flexible** | Île-de-France | ✅ Paramétrable | 1 crédit/fiche | • Focus régional<br>• Date flexible<br>• Économique |
+| **National Optimisé** | France entière | Fixe (1962) | 1 crédit/fiche | • Couverture nationale<br>• Économique |
+| **Pappers Direct** | France entière | Fixe (1961) | ~0.1 crédit/résultat + 1 crédit/fiche | • Plus précis<br>• Un seul appel API |
 
-## Notes techniques
+## Exemples d'Usage
 
-- **API gouvernementale** : Limite de 7 requêtes/seconde, pagination à 25 résultats
-- **API Pappers** : Throttling intégré pour respecter les limites
-- **Gestion d'erreurs** : Le script continue même si certaines fiches sont inaccessibles
-- **Filtrage** : Dirigeants nés avant 1963 (≤ 1962)
+### Cas 1 : Dirigeants seniors en IDF
+```bash
+# Dirigeants nés avant 1960 en Île-de-France
+npm run fetch:idf
+npm run filter -- --date=1959-12-31
+```
 
-## Personnalisation
+### Cas 2 : Analyse par décennie
+```bash
+# Années 50
+npm run filter -- --date=1959-12-31 --out=output/annees_50.csv
 
-### Script standard (`build_pappers.js`)
-- `NAF` : Code NAF (défaut: 78.20Z)
-- `DATE_MAX_DIR` : Date de naissance max (défaut: 31-12-1961)
-- `PAR_CURSEUR` : Taille de page (défaut: 500)
+# Années 60
+npm run filter -- --date=1969-12-31 --out=output/annees_60.csv
+```
 
-### Scripts optimisés
-- `fetch_sirens_gouv.js` :
-  - `NAF` : Code NAF (défaut: 78.20Z)
-  - `DATE_MAX` : Date max (défaut: 1962-12-31)
-- `enrich_from_list.js` :
-  - `YEAR_MAX` : Année max (défaut: 1962)
+### Cas 3 : Export mensuel automatisé
+Utiliser le workflow GitHub Actions avec une date personnalisée chaque mois.
+
+## Notes Techniques
+
+### Limites API
+- **API gouvernementale** : 7 requêtes/seconde, pagination à 25 résultats
+- **API Pappers** : Throttling intégré (120ms entre requêtes)
+
+### Gestion des Dates
+- Comparaison flexible : dates complètes, partielles (année/mois) ou année seule
+- Format français et ISO acceptés
+- Gestion prudente des dates partielles (assume 1er janvier/mois)
+
+### Région Île-de-France
+Code région `11` couvre les départements : 75, 77, 78, 91, 92, 93, 94, 95
 
 ## Support
 
 - API Pappers : https://www.pappers.fr/api/documentation
 - API Recherche d'entreprises : https://api.gouv.fr/les-api/api-recherche-entreprises
+- Issues : https://github.com/Bencode92/CompanySearch/issues
