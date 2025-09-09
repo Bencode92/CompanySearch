@@ -1,24 +1,15 @@
 {
-  "name": "paris92-interim-companies",
+  "name": "paris92-interim-siren",
   "private": true,
   "version": "1.0.0",
-  "description": "Extraction entreprises d'intérim (NAF 78.20Z) départements 75 et 92 - infos entreprises uniquement",
+  "description": "Extraction SIREN entreprises d'intérim (NAF 78.20Z) départements 75 et 92",
   "scripts": {
-    "fetch:75-92": "node scripts/fetch_idf_interim.js",
-    "enrich:companies": "node scripts/enrich_companies_only.js",
-    "build": "npm run fetch:75-92 && npm run enrich:companies",
+    "fetch": "node scripts/fetch_idf_interim.js",
+    "build": "npm run fetch",
     "estimate": "node scripts/estimate_idf.js",
-    "estimate:full": "node scripts/estimate_idf.js --full",
-    "filter": "node scripts/filter_dirigeants_by_dob.js",
-    "enrich:with-directors": "node scripts/enrich_idf_all.js",
-    "build:with-directors": "npm run fetch:75-92 && npm run enrich:with-directors",
-    "fetch:free": "node scripts/fetch_sirens_gouv.js",
-    "enrich:national": "node scripts/enrich_from_list.js",
-    "build:cheap": "npm run fetch:free && npm run enrich:national",
-    "build:pappers": "node scripts/build_pappers.js"
+    "estimate:full": "node scripts/estimate_idf.js --full"
   },
   "dependencies": {
-    "axios": "^1.7.4",
-    "dotenv": "^16.4.5"
+    "axios": "^1.7.4"
   }
 }
