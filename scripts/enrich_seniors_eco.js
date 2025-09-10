@@ -1,11 +1,12 @@
-// Script ULTRA-ÉCONOME - 0,1 crédit par dirigeant trouvé seulement !
-// Utilise /recherche-dirigeants (Pappers) + API gratuite (nom société)
+// scripts/enrich_seniors_eco.js
+// Usage : node scripts/enrich_seniors_eco.js --cutoff-year=1962 --in=output/sirens_interim_75_92.csv --out=output/dirigeants_seniors_eco.csv
+
 const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
 require('dotenv').config();
 
-// ====== PARSING CLI ======
+// ---------- CLI ----------
 const args = Object.fromEntries(
   process.argv.slice(2).map(a => {
     const m = a.match(/^--([^=]+)=(.*)$/);
@@ -13,321 +14,204 @@ const args = Object.fromEntries(
   })
 );
 
-const INPUT = args.in || 'output/sirens_interim_75_92.csv';
-const OUTPUT = args.out || 'output/dirigeants_seniors_enrichis.csv';
-const CUTOFF_YEAR = Number(args['cutoff-year'] || 1962);
+const CUTOFF_YEAR = parseInt(args['cutoff-year'] || '1962', 10);
+const IN_FILE = args.in || 'output/sirens_interim_75_92.csv';
+const OUT_FILE = args.out || 'output/dirigeants_seniors_eco.csv';
 
-// ====== CONFIGURATION API ======
+// ---------- API KEYS ----------
 const PAPPERS_API_KEY = process.env.PAPPERS_API_KEY;
 if (!PAPPERS_API_KEY) {
-  console.error('❌ ERREUR : Clé API Pappers manquante !');
-  console.error('👉 Ajouter PAPPERS_API_KEY dans .env ou dans les secrets GitHub');
+  console.error('❌ PAPPERS_API_KEY manquant (secret GitHub ou .env)');
   process.exit(1);
 }
 
-// Client Pappers (payant - 0,1 crédit/dirigeant)
-const pappers = axios.create({
+// ---------- HTTP clients ----------
+const httpPappers = axios.create({
   baseURL: 'https://api.pappers.fr/v2',
   timeout: 25000,
   headers: { 'api-key': PAPPERS_API_KEY }
 });
 
-// Client API gouvernementale (GRATUIT)
-const gov = axios.create({
+const httpGouv = axios.create({
   baseURL: 'https://recherche-entreprises.api.gouv.fr',
   timeout: 20000
 });
 
-// ====== HELPERS ======
-function sleep(ms) { 
-  return new Promise(r => setTimeout(r, ms)); 
-}
+// ---------- helpers ----------
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 function csvEscape(v) {
   if (v == null) return '';
   const s = String(v);
   return /[;"\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
+function toCsvRow(arr) { return arr.map(csvEscape).join(';') + '\n'; }
 
-function toCsvRow(arr) { 
-  return arr.map(csvEscape).join(';') + '\n'; 
+function parseYearFromDate(str) {
+  if (!str) return null;
+  const m =
+    String(str).match(/(\d{4})-\d{2}-\d{2}/) ||          // YYYY-MM-DD
+    String(str).match(/\b(19\d{2}|20\d{2})\b/);          // year only
+  return m ? parseInt(m[1], 10) : null;
 }
-
-// Parser l'année de naissance depuis différents formats
-function parseBirthYear(dateStr) {
-  if (!dateStr) return null;
-  
-  // Cherche une année plausible (1900-2010)
-  const match = String(dateStr).match(/\b(19\d{2}|20(?:0\d|1[0-9]))\b/);
-  const year = match ? Number(match[1]) : null;
-  
-  return (year && year >= 1900 && year <= new Date().getFullYear()) ? year : null;
-}
-
-// Calculer l'âge actuel
-function calcAgeFromYear(year) {
+function ageFromYear(year) {
   if (!year) return '';
-  return new Date().getFullYear() - year;
+  const now = new Date();
+  return now.getFullYear() - year;
 }
 
-// Charger les SIREN depuis le CSV
-function loadSirens(filepath) {
-  if (!fs.existsSync(filepath)) {
-    console.error(`❌ Fichier introuvable : ${filepath}`);
-    console.error('👉 Lancez d\'abord : npm run fetch');
+function loadSirens(file) {
+  if (!fs.existsSync(file)) {
+    console.error(`❌ Fichier introuvable : ${file}`);
     process.exit(1);
   }
-  
-  const content = fs.readFileSync(filepath, 'utf8').trim().split(/\r?\n/);
-  const sirens = [];
-  
-  // Ignorer l'en-tête, prendre la première colonne
-  for (let i = 1; i < content.length; i++) {
-    const siren = content[i].split(/[;,\t]/)[0].replace(/\D/g, '');
-    if (/^\d{9}$/.test(siren)) {
-      sirens.push(siren);
-    }
+  const lines = fs.readFileSync(file, 'utf8').trim().split(/\r?\n/);
+  const out = [];
+  for (let i = 1; i < lines.length; i++) {
+    const s = lines[i].trim().replace(/\D/g, '');
+    if (/^\d{9}$/.test(s)) out.push(s);
   }
-  
-  return Array.from(new Set(sirens));
+  return Array.from(new Set(out));
 }
 
-// Récupérer les infos de base GRATUITEMENT via l'API gouvernementale
-async function getCompanyInfoFree(siren) {
+// Récup infos gratuites: nom société, SIRET siège, ville, NAF
+async function fetchFreeCompanyMeta(siren) {
   try {
-    const { data } = await gov.get('/search', { 
-      params: { 
-        q: siren, 
-        page: 1, 
-        per_page: 1 
-      } 
+    const { data } = await httpGouv.get('/search', {
+      params: { siren, page: 1, per_page: 1 }
     });
-    
-    const result = data?.results?.[0] || data?.resultats?.[0];
-    if (!result) return { nom: '', siret: '', ville: '' };
-    
-    // Extraire le nom de l'entreprise (plusieurs champs possibles)
-    const nom = result.nom_entreprise || 
-                result.nom_complet || 
-                result.denomination || 
-                result.unite_legale?.denomination || 
-                '';
-    
-    // Extraire le SIRET du siège
-    const siret = result.siret || 
-                  result.siret_formate?.replace(/\D/g, '') ||
-                  result.siege?.siret || 
-                  result.etablissement?.siret || 
-                  '';
-    
-    // Extraire la ville
-    const ville = result.siege?.ville || 
-                  result.ville || 
-                  result.etablissement?.ville || 
-                  '';
-    
-    return { nom, siret, ville };
-  } catch (error) {
-    console.error(`⚠️ Erreur API gov pour ${siren}: ${error.message}`);
-    return { nom: '', siret: '', ville: '' };
+    const it = (data?.results || data?.resultats || [])[0];
+    if (!it) return {};
+    const nom =
+      it.nom_entreprise ||
+      it.denomination ||
+      it.unite_legale?.denomination ||
+      it.unite_legale?.nom_raison_sociale ||
+      '';
+    const siretSiege =
+      it.siret_siege ||
+      it.siege?.siret ||
+      it.etablissement_siege?.siret ||
+      '';
+    const ville =
+      it.siege?.ville || it.etablissement_siege?.libelle_commune || it.etablissement_siege?.ville || '';
+    const codeNaf =
+      it.activite_principale || it.code_naf || it.siege?.activite_principale || '';
+    return { nom, siretSiege, ville, codeNaf };
+  } catch {
+    return {};
   }
 }
 
-// Récupérer les dirigeants seniors via Pappers (0,1 crédit/résultat)
-async function* getSeniorDirectors(siren, cutoffYear) {
-  // Format de date pour l'API : "31-12-YYYY"
-  const maxDate = `31-12-${cutoffYear - 1}`;
-  
-  const params = {
-    siren: siren,
-    type_dirigeant: 'physique',
-    date_de_naissance_dirigeant_max: maxDate,
-    precision: 'standard',
-    par_page: 50,
-    page: 1
-  };
-  
-  while (true) {
-    try {
-      const { data } = await pappers.get('/recherche-dirigeants', { params });
-      const dirigeants = data?.resultats || [];
-      
-      // Yield chaque dirigeant trouvé
-      for (const dirigeant of dirigeants) {
-        yield dirigeant;
-      }
-      
-      // Pagination si nécessaire
-      const currentPage = data?.page || params.page;
-      const totalResults = data?.total || dirigeants.length;
-      const totalPages = Math.ceil(totalResults / params.par_page);
-      
-      if (currentPage >= totalPages || dirigeants.length === 0) {
-        break;
-      }
-      
-      params.page++;
-      await sleep(150); // Petite pause entre les pages
-    } catch (error) {
-      if (error?.response?.status === 429) {
-        console.log('⏳ Rate limit atteint, pause de 5 secondes...');
-        await sleep(5000);
-      } else {
-        throw error;
-      }
-    }
-  }
-}
-
-// ====== MAIN ======
+// ---------- main ----------
 (async () => {
-  console.log('');
-  console.log('═══════════════════════════════════════════════════════════');
-  console.log('   💰 ENRICHISSEMENT ÉCONOMIQUE - DIRIGEANTS SENIORS');
-  console.log('   📊 0,1 crédit par dirigeant trouvé (au lieu de 1-2/entreprise)');
-  console.log('═══════════════════════════════════════════════════════════');
-  console.log('');
-  console.log(`📂 Fichier source : ${INPUT}`);
-  console.log(`🎯 Filtre : Dirigeants nés AVANT ${CUTOFF_YEAR}`);
-  console.log(`💾 Fichier sortie : ${OUTPUT}`);
-  console.log('');
-  
-  // Charger les SIREN
-  const sirens = loadSirens(INPUT);
-  console.log(`📦 ${sirens.length} SIREN à traiter`);
-  console.log('');
-  
-  // Préparer le fichier de sortie
-  fs.mkdirSync(path.dirname(OUTPUT), { recursive: true });
-  const ws = fs.createWriteStream(OUTPUT, { encoding: 'utf8' });
-  
-  // En-tête du CSV
+  const sirens = loadSirens(IN_FILE);
+  fs.mkdirSync(path.dirname(OUT_FILE), { recursive: true });
+
+  const ws = fs.createWriteStream(OUT_FILE, 'utf8');
   ws.write(toCsvRow([
     'Société',
     'SIREN',
-    'SIRET_siège',
-    'Nom',
-    'Prénom',
+    'SIRET_siege',
+    'Nom_dirigeant',
+    'Prenom_dirigeant',
     'Fonction',
     'Date_naissance',
-    'Année',
-    'Âge',
-    'Ville_siège'
+    'Age',
+    'Ville_siege',
+    'Code_NAF'
   ]));
-  
+
+  let totalFound = 0;
+  const dateMax = `31-12-${String(CUTOFF_YEAR - 1)}`; // nés AVANT CUTOFF_YEAR
+
+  console.log(`🔎 Dirigeants personnes PHYSIQUES nés avant ${CUTOFF_YEAR} (date_max=${dateMax})`);
+  console.log(`📂 Source: ${IN_FILE}  →  📄 Sortie: ${OUT_FILE}`);
+  console.log(`🧮 ${sirens.length} SIREN à parcourir\n`);
+
   let processed = 0;
-  let found = 0;
-  let credits = 0;
-  const startTime = Date.now();
-  
-  // Set pour éviter les doublons (même dirigeant sur plusieurs mandats)
-  const seen = new Set();
-  
-  console.log('⏳ Traitement en cours...');
-  console.log('');
-  
   for (const siren of sirens) {
     processed++;
-    
-    // Affichage progression
     if (processed % 25 === 0) {
-      const pct = Math.round(processed * 100 / sirens.length);
-      const elapsed = Math.round((Date.now() - startTime) / 1000);
-      console.log(`   → ${processed}/${sirens.length} (${pct}%) - ${found} dirigeants - ${credits} crédits - ${elapsed}s`);
+      const pct = Math.round((processed * 100) / sirens.length);
+      console.log(`… ${processed}/${sirens.length} (${pct}%) — cumul résultats: ${totalFound}`);
     }
-    
-    // 1. Récupérer les infos de base GRATUITEMENT
-    const companyInfo = await getCompanyInfoFree(siren);
-    await sleep(150); // Respecter le rate limit API gov
-    
-    try {
-      // 2. Récupérer les dirigeants seniors (PAYANT: 0,1 crédit/résultat)
-      for await (const dirigeant of getSeniorDirectors(siren, CUTOFF_YEAR)) {
-        // Extraire les champs (plusieurs formats possibles selon Pappers)
-        const nom = dirigeant.nom || dirigeant.nom_dirigeant || '';
-        const prenom = dirigeant.prenom || dirigeant.prenom_dirigeant || '';
-        const fonction = dirigeant.qualite || dirigeant.fonction || '';
-        const dateNaissance = dirigeant.date_de_naissance || 
-                            dirigeant.date_naissance || 
-                            dirigeant.informations_naissance || '';
-        
-        // Parser l'année
-        const annee = parseBirthYear(dateNaissance);
-        
-        // Double vérification du filtre (normalement déjà fait par l'API)
-        if (!annee || annee >= CUTOFF_YEAR) continue;
-        
-        // Clé unique pour éviter les doublons
-        const key = `${siren}|${nom}|${prenom}|${annee}`;
-        if (seen.has(key)) continue;
-        seen.add(key);
-        
-        // Écrire la ligne
-        ws.write(toCsvRow([
-          companyInfo.nom,
-          siren,
-          companyInfo.siret,
-          nom,
-          prenom,
-          fonction,
-          dateNaissance,
-          annee,
-          calcAgeFromYear(annee),
-          companyInfo.ville
-        ]));
-        
-        found++;
-        credits += 0.1; // Chaque dirigeant retourné = 0,1 crédit
-      }
-      
-      await sleep(120); // Pause entre chaque entreprise
-      
-    } catch (error) {
-      if (error?.response?.status === 404) {
-        // Pas de dirigeants trouvés, c'est normal
-      } else if (error?.response?.status === 429) {
-        console.log('   ⚠️ Rate limit Pappers, pause de 5 secondes...');
-        await sleep(5000);
-      } else {
-        console.error(`   ⚠️ Erreur SIREN ${siren}: ${error.message}`);
+
+    // Métadonnées gratuites (1 appel gratuit / SIREN)
+    const meta = await fetchFreeCompanyMeta(siren);
+
+    // Recherche dirigeant (0,1 crédit / résultat)
+    let page = 1;
+    while (true) {
+      try {
+        const { data } = await httpPappers.get('/recherche-dirigeants', {
+          params: {
+            siren,
+            type_dirigeant: 'physique',
+            date_de_naissance_dirigeant_max: dateMax, // JJ-MM-AAAA
+            par_page: 100,
+            page
+          }
+        });
+
+        const results = data?.resultats || [];
+        if (results.length === 0) break;
+
+        for (const r of results) {
+          // champs tolérants selon schéma Pappers
+          const nom = r.nom || r.representant?.nom || '';
+          const prenom = r.prenom || r.representant?.prenom || '';
+          const fonction = r.qualite || r.fonction || r.role || '';
+          const dob = r.date_de_naissance || r.date_naissance || r.informations_naissance || '';
+          const year = parseYearFromDate(dob);
+          const age = year ? ageFromYear(year) : (r.age || '');
+          const societe =
+            meta.nom ||
+            r.denomination ||
+            r.entreprise?.denomination ||
+            r.entreprise?.nom_entreprise ||
+            '';
+          const siretSiege = meta.siretSiege || '';
+          const ville = meta.ville || '';
+          const codeNaf = meta.codeNaf || r.code_naf || '';
+
+          ws.write(toCsvRow([
+            societe,
+            siren,
+            siretSiege,
+            nom,
+            prenom,
+            fonction,
+            dob || (year ? String(year) : ''),
+            age,
+            ville,
+            codeNaf
+          ]));
+          totalFound++;
+        }
+
+        page++;
+        await sleep(120); // throttle doux Pappers
+      } catch (e) {
+        if (e?.response?.status === 429) {
+          console.log('⏳ Rate limit, pause 5s…');
+          await sleep(5000);
+          continue;
+        }
+        // autre erreur → on passe au SIREN suivant
+        break;
       }
     }
+
+    // léger délai entre SIREN
+    await sleep(80);
   }
-  
-  // Fermer le fichier
+
   ws.end();
-  await new Promise(resolve => ws.on('finish', resolve));
-  
-  const duration = Math.round((Date.now() - startTime) / 1000);
-  
-  // Résumé final
-  console.log('');
-  console.log('═══════════════════════════════════════════════════════════');
-  console.log('   ✅ ENRICHISSEMENT TERMINÉ');
-  console.log('═══════════════════════════════════════════════════════════');
-  console.log('');
-  console.log(`📊 Résultats :`);
-  console.log(`   • Entreprises traitées : ${processed}`);
-  console.log(`   • Dirigeants seniors trouvés : ${found}`);
-  console.log(`   • Crédits Pappers consommés : ${credits.toFixed(1)}`);
-  console.log(`   • Temps total : ${duration} secondes`);
-  console.log(`   • Coût estimé : ~${(credits * 0.02).toFixed(2)}€ (à 0,02€/crédit)`);
-  console.log('');
-  console.log(`📄 Fichier de sortie : ${OUTPUT}`);
-  console.log('');
-  
-  if (found > 0) {
-    console.log('💡 Prochaines étapes :');
-    console.log('   1. Ouvrir le fichier CSV dans Excel');
-    console.log('   2. Trier par âge pour identifier les plus seniors');
-    console.log('   3. Enrichir avec CA/résultat si nécessaire (autre script)');
-    console.log('');
-    console.log('💰 Économies réalisées :');
-    const economie = processed - credits;
-    console.log(`   • ${economie.toFixed(0)} crédits économisés vs approche classique`);
-    console.log(`   • ~${(economie * 0.02).toFixed(2)}€ économisés`);
-  } else {
-    console.log('⚠️ Aucun dirigeant senior trouvé.');
-    console.log('   Vérifiez que les entreprises ont des dirigeants personnes physiques.');
-  }
+  await new Promise(res => ws.on('finish', res));
+
+  console.log('\n✅ Terminé');
+  console.log(`📈 Dirigeants seniors trouvés: ${totalFound}`);
+  console.log(`💳 Crédits consommés (≈): ${Math.round(totalFound) / 10} (0,1 / résultat)`);
+  console.log(`📄 Fichier: ${OUT_FILE}`);
 })();
