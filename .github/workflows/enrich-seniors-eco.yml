@@ -1,0 +1,181 @@
+name: Enrich Senior Directors ECO
+
+on:
+  workflow_dispatch:
+    inputs:
+      cutoff_year:
+        description: "Garder uniquement les dirigeants nés AVANT cette année"
+        required: false
+        default: "1962"
+        type: string
+      input_file:
+        description: "CSV d'entrée (SIREN par ligne)"
+        required: false
+        default: "output/sirens_interim_75_92.csv"
+        type: string
+      output_file:
+        description: "CSV de sortie"
+        required: false
+        default: "output/dirigeants_seniors_eco.csv"
+        type: string
+
+  # Tous les lundis à 06:00 UTC
+  schedule:
+    - cron: "0 6 * * 1"
+
+jobs:
+  enrich-seniors-eco:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check input CSV exists
+        id: check_input
+        run: |
+          INPUT_FILE="${{ inputs.input_file || 'output/sirens_interim_75_92.csv' }}"
+          
+          if [ ! -f "$INPUT_FILE" ]; then
+            echo "❌ Fichier introuvable: $INPUT_FILE"
+            echo "👉 Lancez d'abord le workflow 'Get SIREN List Paris-92'"
+            exit 1
+          fi
+          
+          COUNT=$(tail -n +2 "$INPUT_FILE" | wc -l)
+          echo "✅ Fichier trouvé : $COUNT SIREN à traiter"
+          echo "siren_count=$COUNT" >> $GITHUB_OUTPUT
+
+      - name: Enrichissement ÉCONOMIQUE (0,1 crédit/dirigeant)
+        env:
+          PAPPERS_API_KEY: ${{ secrets.PAPPERS_API_KEY }}
+        run: |
+          if [ -z "$PAPPERS_API_KEY" ]; then
+            echo "❌ Secret PAPPERS_API_KEY manquant !"
+            echo "👉 Settings → Secrets and variables → Actions → New repository secret"
+            exit 1
+          fi
+          
+          echo "🚀 Lancement enrichissement ÉCONOMIQUE"
+          echo "💰 Méthode : /recherche-dirigeants (0,1 crédit par résultat)"
+          echo "🎯 Filtre : Dirigeants nés avant ${{ inputs.cutoff_year || '1962' }}"
+          echo ""
+          
+          node scripts/enrich_seniors_eco.js \
+            --cutoff-year="${{ inputs.cutoff_year || '1962' }}" \
+            --in="${{ inputs.input_file || 'output/sirens_interim_75_92.csv' }}" \
+            --out="${{ inputs.output_file || 'output/dirigeants_seniors_eco.csv' }}"
+
+      - name: Analyser les résultats
+        id: analyze
+        run: |
+          OUTPUT_FILE="${{ inputs.output_file || 'output/dirigeants_seniors_eco.csv' }}"
+          
+          if [ -f "$OUTPUT_FILE" ]; then
+            LINES=$(tail -n +2 "$OUTPUT_FILE" | wc -l)
+            echo "dirigeants_count=$LINES" >> $GITHUB_OUTPUT
+            
+            # Calculer les économies
+            SIREN_COUNT=${{ steps.check_input.outputs.siren_count }}
+            CREDITS_USED=$(echo "scale=1; $LINES * 0.1" | bc)
+            CREDITS_SAVED=$(echo "scale=1; $SIREN_COUNT - $CREDITS_USED" | bc)
+            MONEY_SAVED=$(echo "scale=2; $CREDITS_SAVED * 0.02" | bc)
+            
+            echo "credits_used=$CREDITS_USED" >> $GITHUB_OUTPUT
+            echo "credits_saved=$CREDITS_SAVED" >> $GITHUB_OUTPUT
+            echo "money_saved=$MONEY_SAVED" >> $GITHUB_OUTPUT
+            
+            echo ""
+            echo "📊 RÉSULTATS"
+            echo "════════════════════════════════════"
+            echo "✅ $LINES dirigeants seniors trouvés"
+            echo "💰 $CREDITS_USED crédits utilisés (vs $SIREN_COUNT en méthode classique)"
+            echo "🎉 $CREDITS_SAVED crédits économisés (~${MONEY_SAVED}€)"
+            echo ""
+            echo "📄 Aperçu des 10 premiers résultats :"
+            echo "────────────────────────────────────"
+            head -n 11 "$OUTPUT_FILE" | column -t -s ';'
+          else
+            echo "⚠️ Aucun fichier de résultat généré"
+            echo "dirigeants_count=0" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Upload résultats
+        if: steps.analyze.outputs.dirigeants_count != '0'
+        uses: actions/upload-artifact@v4
+        with:
+          name: dirigeants-seniors-eco-${{ github.run_number }}
+          path: ${{ inputs.output_file || 'output/dirigeants_seniors_eco.csv' }}
+          retention-days: 90
+
+      - name: Commit résultats
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          
+          OUTPUT_FILE="${{ inputs.output_file || 'output/dirigeants_seniors_eco.csv' }}"
+          
+          # Forcer l'ajout malgré le .gitignore
+          git add -f "$OUTPUT_FILE" 2>/dev/null || true
+          
+          # Message de commit avec stats
+          CUTOFF="${{ inputs.cutoff_year || '1962' }}"
+          COUNT="${{ steps.analyze.outputs.dirigeants_count || '0' }}"
+          CREDITS="${{ steps.analyze.outputs.credits_used || '0' }}"
+          
+          git commit -m "Enrichissement ECO - $COUNT dirigeants (nés<$CUTOFF) - ${CREDITS} crédits" || echo "Pas de changements"
+          git push || true
+
+      - name: Créer un résumé détaillé
+        run: |
+          echo "# 💰 Enrichissement ÉCONOMIQUE - Dirigeants Seniors" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          echo "## 🎯 Paramètres" >> $GITHUB_STEP_SUMMARY
+          echo "- **Méthode** : /recherche-dirigeants (0,1 crédit/résultat)" >> $GITHUB_STEP_SUMMARY
+          echo "- **Départements** : Paris (75) et Hauts-de-Seine (92)" >> $GITHUB_STEP_SUMMARY
+          echo "- **Secteur** : Intérim (NAF 78.20Z)" >> $GITHUB_STEP_SUMMARY
+          echo "- **Filtre âge** : Nés avant ${{ inputs.cutoff_year || '1962' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Fichier source** : ${{ inputs.input_file || 'output/sirens_interim_75_92.csv' }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [ "${{ steps.analyze.outputs.dirigeants_count }}" != "0" ]; then
+            echo "## ✅ Résultats" >> $GITHUB_STEP_SUMMARY
+            echo "| Métrique | Valeur |" >> $GITHUB_STEP_SUMMARY
+            echo "|----------|--------|" >> $GITHUB_STEP_SUMMARY
+            echo "| **Entreprises traitées** | ${{ steps.check_input.outputs.siren_count }} |" >> $GITHUB_STEP_SUMMARY
+            echo "| **Dirigeants seniors trouvés** | ${{ steps.analyze.outputs.dirigeants_count }} |" >> $GITHUB_STEP_SUMMARY
+            echo "| **Crédits utilisés** | ${{ steps.analyze.outputs.credits_used }} |" >> $GITHUB_STEP_SUMMARY
+            echo "| **Crédits économisés** | ${{ steps.analyze.outputs.credits_saved }} |" >> $GITHUB_STEP_SUMMARY
+            echo "| **Économie réalisée** | ~${{ steps.analyze.outputs.money_saved }}€ |" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            
+            echo "## 📊 Données collectées" >> $GITHUB_STEP_SUMMARY
+            echo "- Nom de la société (gratuit via API gouv)" >> $GITHUB_STEP_SUMMARY
+            echo "- SIREN et SIRET du siège" >> $GITHUB_STEP_SUMMARY
+            echo "- Nom, prénom et fonction du dirigeant" >> $GITHUB_STEP_SUMMARY
+            echo "- Date de naissance et âge calculé" >> $GITHUB_STEP_SUMMARY
+            echo "- Ville du siège social" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            
+            echo "## 💡 Avantages de cette méthode" >> $GITHUB_STEP_SUMMARY
+            echo "- ✅ **10x moins cher** : 0,1 crédit par dirigeant trouvé" >> $GITHUB_STEP_SUMMARY
+            echo "- ✅ **Ciblage précis** : Filtre directement par âge dans l'API" >> $GITHUB_STEP_SUMMARY
+            echo "- ✅ **Données gratuites** : Nom société via API gouvernementale" >> $GITHUB_STEP_SUMMARY
+            echo "- ✅ **Pas de gaspillage** : Paiement uniquement pour les résultats pertinents" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "## ⚠️ Aucun résultat" >> $GITHUB_STEP_SUMMARY
+            echo "Vérifiez que le fichier source contient des SIREN valides." >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "---" >> $GITHUB_STEP_SUMMARY
+          echo "*Fichier généré : ${{ inputs.output_file || 'output/dirigeants_seniors_eco.csv' }}*" >> $GITHUB_STEP_SUMMARY
