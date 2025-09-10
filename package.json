@@ -17,6 +17,7 @@
     "enrich:advanced": "node scripts/enrich_pappers_advanced.js",
     "enrich:seniors": "node scripts/enrich_pappers_advanced.js --date=1964-12-31",
     "enrich:seniors:simple": "node scripts/enrich_seniors_simple.js",
+    "enrich:seniors:eco": "node scripts/enrich_seniors_eco.js --cutoff-year=1962",
     "enrich:batch": "node scripts/enrich_pappers_advanced.js --batch=200 --concurrent=5",
     "help:fetch": "node scripts/fetch_idf_advanced.js --help",
     "help:enrich": "node scripts/enrich_pappers_advanced.js --help"
