@@ -1,9 +1,2 @@
-Société;SIREN;SIRET_siege;Nom_dirigeant;Prenom_dirigeant;Fonction;Date_naissance;Age;Ville_siege;Code_NAF
-;429955297;;Roumilhac;Alain;Président;1961-04-14;64;;
-;329925010;;AUGEREAU;Daniel;Président;1944-01-07;81;;
-;329925010;;Detaille;Michele;Membre du conseil de surveillance;1957-06-14;68;;
-;329925010;;Gros;Nadine, Camille, Florentine;Autre;1953-05-02;72;;
-;329925010;;Piochaud;Patrick;Directeur général délégué;1951-06-16;74;;
-;329925010;;Drouet;Yvon;Autre;1961-01-13;64;;
-;449573088;;Maillet;Catherine;Commissaire aux comptes titulaire;1956-06-08;69;;
-;449573088;;Yablonsky;Serge;Commissaire aux comptes suppléant;1953-04-01;72;;
+Societe,SIREN,SIRET_siege,Nom_president,Prenom_president,Fonction,Date_naissance,Age,Ville_siege,Code_NAF
+,429955297,,Roumilhac,Alain,Président,1961-04-14,64,,
