@@ -1,5 +1,5 @@
 // scripts/enrich_seniors_eco.js
-// Usage : node scripts/enrich_seniors_eco.js --cutoff-year=1962 --in=output/sirens_interim_75_92.csv --out=output/dirigeants_seniors_eco.csv
+// Usage : node scripts/enrich_seniors_eco.js --cutoff-year=1962 --in=output/sirens_interim_75_92.csv --out=output/dirigeants_seniors_eco.csv [--paid-fallback=1]
 
 const fs = require('fs');
 const path = require('path');
@@ -13,10 +13,10 @@ const args = Object.fromEntries(
     return m ? [m[1], m[2]] : [a.replace(/^--/, ''), true];
   })
 );
-
 const CUTOFF_YEAR = parseInt(args['cutoff-year'] || '1962', 10);
 const IN_FILE = args.in || 'output/sirens_interim_75_92.csv';
 const OUT_FILE = args.out || 'output/dirigeants_seniors_eco.csv';
+const PAID_FALLBACK = String(args['paid-fallback'] || '0') === '1'; // 1 crédit si utilisé
 
 // ---------- API KEY ----------
 const PAPPERS_API_KEY = process.env.PAPPERS_API_KEY;
@@ -40,7 +40,7 @@ const httpGouv = axios.create({
 // ---------- helpers ----------
 function sleep(ms){ return new Promise(r => setTimeout(r, ms)); }
 
-// CSV RFC 4180 (délimiteur virgule). On cite si : guillemet, virgule, point-virgule, retour ligne.
+// CSV RFC 4180 (séparateur virgule)
 const DELIM = ',';
 function csvEscape(v){
   if (v == null) return '';
@@ -71,32 +71,84 @@ function loadSirens(file){
   return Array.from(new Set(out));
 }
 
-// Nom société / SIRET siège / Ville / NAF via API gouv (gratuit)
-async function fetchFreeCompanyMeta(siren){
-  try{
-    const { data } = await httpGouv.get('/search', { params: { siren, page:1, per_page:1 } });
-    const it = (data?.results || data?.resultats || [])[0];
-    if (!it) return {};
-    const nom =
-      it.nom_entreprise ||
-      it.denomination ||
-      it.unite_legale?.denomination ||
-      it.unite_legale?.nom_raison_sociale || '';
-    const siretSiege = it.siret_siege || it.siege?.siret || it.etablissement_siege?.siret || '';
-    const ville = it.siege?.ville || it.etablissement_siege?.libelle_commune || it.etablissement_siege?.ville || '';
-    const codeNaf = it.activite_principale || it.code_naf || it.siege?.activite_principale || '';
-    return { nom, siretSiege, ville, codeNaf };
-  } catch { return {}; }
-}
-
 // Normalisation sans accents
 function normalize(s){
   return (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
 }
 function isStrictPresident(f){
   const n = normalize(f);
-  // on accepte exactement "president" (éventuellement avec majuscules/accents)
   return n === 'president';
+}
+
+// ---------- META GRATUITE (robuste) ----------
+async function fetchFreeCompanyMeta(siren){
+  // 1) Essai avec "q" + precision exacte (donne souvent plus de champs qu'avec ?siren=)
+  try{
+    const { data } = await httpGouv.get('/search', {
+      params: { q: siren, precision: 'exacte', page: 1, per_page: 1 }
+    });
+    const it = (data?.results || data?.resultats || [])[0];
+    const m1 = pickMetaFromGouv(it);
+    if (hasEnoughMeta(m1)) return m1;
+  }catch{}
+
+  // 2) Essai avec le paramètre siren
+  try{
+    const { data } = await httpGouv.get('/search', {
+      params: { siren, page: 1, per_page: 1 }
+    });
+    const it = (data?.results || data?.resultats || [])[0];
+    const m2 = pickMetaFromGouv(it);
+    if (hasAnyMeta(m2)) return m2;
+  }catch{}
+
+  // 3) Rien trouvé gratuitement
+  return {};
+}
+
+function hasAnyMeta(m){ return !!(m && (m.nom || m.siretSiege || m.ville || m.codeNaf)); }
+function hasEnoughMeta(m){ return !!(m && (m.nom || m.siretSiege || m.ville)); }
+
+function pickMetaFromGouv(it){
+  if (!it) return {};
+  // différents emplacements possibles selon versions/structures
+  const siege =
+    it.siege ||
+    it.etablissement_siege ||
+    (Array.isArray(it.etablissements) ? it.etablissements.find(e => e?.siege) : null) ||
+    (Array.isArray(it.etablissements) ? it.etablissements[0] : null) ||
+    {};
+
+  const nom =
+    it.nom_entreprise ||
+    it.denomination ||
+    it.enseigne ||
+    (it.unite_legale?.denomination) ||
+    (it.unite_legale?.nom + ' ' + (it.unite_legale?.prenoms || '')).trim() ||
+    '';
+
+  const siretSiege =
+    it.siret_siege ||
+    siege?.siret ||
+    (siege?.siret_formate ? siege.siret_formate.replace(/\D/g,'') : '') ||
+    '';
+
+  const ville =
+    siege?.ville ||
+    siege?.libelle_commune ||
+    siege?.libelle_commune_etranger ||
+    siege?.commune ||
+    '';
+
+  const codeNaf =
+    it.activite_principale ||
+    siege?.activite_principale ||
+    siege?.code_naf ||
+    it.code_naf ||
+    it.unite_legale?.activite_principale ||
+    '';
+
+  return { nom, siretSiege, ville, codeNaf };
 }
 
 // ---------- main ----------
@@ -125,20 +177,20 @@ function isStrictPresident(f){
       console.log(`… ${processed}/${sirens.length} (${pct}%) — présidents trouvés: ${totalFound}`);
     }
 
-    // Métadonnées gratuites
-    const meta = await fetchFreeCompanyMeta(siren);
+    // 1) Méta gratuite
+    let meta = await fetchFreeCompanyMeta(siren);
 
-    // Cherche uniquement la qualité "Président"
+    // 2) Cherche uniquement la qualité "Président"
     let page = 1;
-    let tookOneForThisSiren = false; // on garde le premier président (s'il y en a plusieurs, rare)
+    let tookOneForThisSiren = false; // 1 ligne max / SIREN
     while (!tookOneForThisSiren){
       try{
         const { data } = await httpPappers.get('/recherche-dirigeants', {
           params: {
             siren,
             type_dirigeant: 'physique',
-            qualite_dirigeant: 'Président',                 // 🔹 filtration côté API
-            date_de_naissance_dirigeant_max: dateMax,       // 🔹 nés avant cutoff
+            qualite_dirigeant: 'Président',
+            date_de_naissance_dirigeant_max: dateMax,  // JJ-MM-AAAA
             par_page: 100,
             page
           }
@@ -147,10 +199,48 @@ function isStrictPresident(f){
         const results = data?.resultats || [];
         if (results.length === 0) break;
 
-        // prends le premier "vrai" président
         for (const r of results){
           const fonction = r.qualite || r.fonction || r.role || '';
-          if (!isStrictPresident(fonction)) continue;       // 🔹 re-filtre sécurité
+          if (!isStrictPresident(fonction)) continue; // sécurité
+
+          // Fallbacks à partir du résultat Pappers si la méta gouv est incomplète
+          const pEnt = r.entreprise || {};
+          const pSiege = pEnt.siege || {};
+
+          const societe =
+            meta.nom || pEnt.denomination || pEnt.nom_entreprise || '';
+
+          const siretSiege =
+            meta.siretSiege ||
+            pSiege.siret ||
+            (pSiege.siret_formate ? pSiege.siret_formate.replace(/\D/g,'') : '') ||
+            '';
+
+          const ville =
+            meta.ville ||
+            pSiege.ville ||
+            '';
+
+          const codeNaf =
+            meta.codeNaf ||
+            r.code_naf ||
+            pEnt.code_naf ||
+            '';
+
+          // Optionnel : dernier recours payant à 1 crédit si on n'a ni nom ni siret ni ville
+          if (!societe && !siretSiege && !ville && PAID_FALLBACK){
+            try{
+              const { data: entFull } = await httpPappers.get('/entreprise', {
+                params: { siren, integrer_diffusions_partielles: true }
+              });
+              meta = {
+                nom: entFull.denomination || entFull.nom_entreprise || meta.nom || '',
+                siretSiege: entFull?.siege?.siret || meta.siretSiege || '',
+                ville: entFull?.siege?.ville || meta.ville || '',
+                codeNaf: entFull.code_naf || meta.codeNaf || ''
+              };
+            }catch{}
+          }
 
           const nom = r.nom || r.representant?.nom || '';
           const prenom = r.prenom || r.representant?.prenom || '';
@@ -158,20 +248,21 @@ function isStrictPresident(f){
           const year = parseYearFromDate(dob);
           const age = year ? ageFromYear(year) : (r.age || '');
 
-          const societe =
-            meta.nom ||
-            r.entreprise?.denomination ||
-            r.entreprise?.nom_entreprise || '';
-
           ws.write(toCsvRow([
-            societe, siren, meta.siretSiege || '',
-            nom, prenom, 'Président',
-            dob || (year ? String(year) : ''), age,
-            meta.ville || '', meta.codeNaf || r.code_naf || ''
+            meta.nom || pEnt.denomination || pEnt.nom_entreprise || '',
+            siren,
+            meta.siretSiege || siretSiege || '',
+            nom,
+            prenom,
+            'Président',
+            dob || (year ? String(year) : ''),
+            age,
+            meta.ville || ville || '',
+            meta.codeNaf || codeNaf || ''
           ]));
 
           totalFound++;
-          tookOneForThisSiren = true; // 1 ligne max par SIREN
+          tookOneForThisSiren = true;
           break;
         }
 
