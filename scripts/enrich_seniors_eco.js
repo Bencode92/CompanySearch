@@ -40,6 +40,9 @@ const httpGouv = axios.create({
 // ---------- helpers ----------
 function sleep(ms){ return new Promise(r => setTimeout(r, ms)); }
 
+// Nettoyeur de valeurs undefined/null
+const safe = v => (v && v !== 'undefined' && v !== 'null') ? String(v) : '';
+
 // CSV RFC 4180 (séparateur virgule)
 const DELIM = ',';
 function csvEscape(v){
@@ -111,7 +114,7 @@ function hasEnoughMeta(m){ return !!(m && (m.nom || m.siretSiege || m.ville)); }
 
 function pickMetaFromGouv(it){
   if (!it) return {};
-  // différents emplacements possibles selon versions/structures
+
   const siege =
     it.siege ||
     it.etablissement_siege ||
@@ -119,33 +122,43 @@ function pickMetaFromGouv(it){
     (Array.isArray(it.etablissements) ? it.etablissements[0] : null) ||
     {};
 
+  // Nom personne morale (prioritaire) puis personne physique, puis autres alias
+  const nomPM =
+    safe(it.nom_entreprise) ||
+    safe(it.denomination) ||
+    safe(it.enseigne) ||
+    safe(it.unite_legale?.denomination) ||
+    safe(it.raison_sociale) ||
+    safe(it.nom_raison_sociale);
+
+  const nomPP = [safe(it.unite_legale?.nom), safe(it.unite_legale?.prenoms)]
+    .filter(Boolean).join(' ').trim();
+
   const nom =
-    it.nom_entreprise ||
-    it.denomination ||
-    it.enseigne ||
-    (it.unite_legale?.denomination) ||
-    (it.unite_legale?.nom + ' ' + (it.unite_legale?.prenoms || '')).trim() ||
+    nomPM ||
+    nomPP ||
+    safe(it.nom_complet) ||
     '';
 
   const siretSiege =
-    it.siret_siege ||
-    siege?.siret ||
-    (siege?.siret_formate ? siege.siret_formate.replace(/\D/g,'') : '') ||
+    safe(it.siret_siege) ||
+    safe(siege?.siret) ||
+    safe(siege?.siret_formate)?.replace(/\D/g,'') ||
     '';
 
   const ville =
-    siege?.ville ||
-    siege?.libelle_commune ||
-    siege?.libelle_commune_etranger ||
-    siege?.commune ||
+    safe(siege?.ville) ||
+    safe(siege?.libelle_commune) ||
+    safe(siege?.libelle_commune_etranger) ||
+    safe(siege?.commune) ||
     '';
 
   const codeNaf =
-    it.activite_principale ||
-    siege?.activite_principale ||
-    siege?.code_naf ||
-    it.code_naf ||
-    it.unite_legale?.activite_principale ||
+    safe(it.activite_principale) ||
+    safe(siege?.activite_principale) ||
+    safe(siege?.code_naf) ||
+    safe(it.code_naf) ||
+    safe(it.unite_legale?.activite_principale) ||
     '';
 
   return { nom, siretSiege, ville, codeNaf };
@@ -208,23 +221,28 @@ function pickMetaFromGouv(it){
           const pSiege = pEnt.siege || {};
 
           const societe =
-            meta.nom || pEnt.denomination || pEnt.nom_entreprise || '';
+            safe(meta.nom) ||
+            safe(pEnt.denomination) ||
+            safe(pEnt.nom_entreprise) ||
+            safe(r.denomination) ||
+            safe(r.nom_entreprise) ||
+            '';
 
           const siretSiege =
-            meta.siretSiege ||
-            pSiege.siret ||
-            (pSiege.siret_formate ? pSiege.siret_formate.replace(/\D/g,'') : '') ||
+            safe(meta.siretSiege) ||
+            safe(pSiege.siret) ||
+            safe(pSiege.siret_formate)?.replace(/\D/g,'') ||
             '';
 
           const ville =
-            meta.ville ||
-            pSiege.ville ||
+            safe(meta.ville) ||
+            safe(pSiege.ville) ||
             '';
 
           const codeNaf =
-            meta.codeNaf ||
-            r.code_naf ||
-            pEnt.code_naf ||
+            safe(meta.codeNaf) ||
+            safe(r.code_naf) ||
+            safe(pEnt.code_naf) ||
             '';
 
           // Optionnel : dernier recours payant à 1 crédit si on n'a ni nom ni siret ni ville
@@ -234,31 +252,31 @@ function pickMetaFromGouv(it){
                 params: { siren, integrer_diffusions_partielles: true }
               });
               meta = {
-                nom: entFull.denomination || entFull.nom_entreprise || meta.nom || '',
-                siretSiege: entFull?.siege?.siret || meta.siretSiege || '',
-                ville: entFull?.siege?.ville || meta.ville || '',
-                codeNaf: entFull.code_naf || meta.codeNaf || ''
+                nom: safe(entFull.denomination) || safe(entFull.nom_entreprise) || meta.nom || '',
+                siretSiege: safe(entFull?.siege?.siret) || meta.siretSiege || '',
+                ville: safe(entFull?.siege?.ville) || meta.ville || '',
+                codeNaf: safe(entFull.code_naf) || meta.codeNaf || ''
               };
             }catch{}
           }
 
-          const nom = r.nom || r.representant?.nom || '';
-          const prenom = r.prenom || r.representant?.prenom || '';
-          const dob = r.date_de_naissance || r.date_naissance || r.informations_naissance || '';
+          const nom = safe(r.nom) || safe(r.representant?.nom) || '';
+          const prenom = safe(r.prenom) || safe(r.representant?.prenom) || '';
+          const dob = safe(r.date_de_naissance) || safe(r.date_naissance) || safe(r.informations_naissance) || '';
           const year = parseYearFromDate(dob);
-          const age = year ? ageFromYear(year) : (r.age || '');
+          const age = year ? ageFromYear(year) : (safe(r.age) || '');
 
           ws.write(toCsvRow([
-            meta.nom || pEnt.denomination || pEnt.nom_entreprise || '',
+            safe(meta.nom) || societe,
             siren,
-            meta.siretSiege || siretSiege || '',
+            safe(meta.siretSiege) || siretSiege,
             nom,
             prenom,
             'Président',
             dob || (year ? String(year) : ''),
             age,
-            meta.ville || ville || '',
-            meta.codeNaf || codeNaf || ''
+            safe(meta.ville) || ville,
+            safe(meta.codeNaf) || codeNaf
           ]));
 
           totalFound++;
