@@ -1,140 +1,159 @@
 # CompanySearch - Prospection B2B Dirigeants Seniors
 
-## 🎯 Objectif Principal
+## 🎉 NOUVEAU : Version ULTRA-ÉCONOMIQUE !
 
-**Identifier les dirigeants seniors (62+ ans) des entreprises d'intérim de Paris et Hauts-de-Seine** pour opportunités de succession/transmission d'entreprise.
+**💰 Économisez 95% sur vos crédits Pappers** avec la nouvelle méthode `/recherche-dirigeants` :
+- **0,1 crédit** par dirigeant trouvé (au lieu de 1-2 crédits/entreprise)
+- **Nom société GRATUIT** via l'API gouvernementale
+- **Filtre par âge intégré** dans l'API
 
-## ⚡ Utilisation Simple et Directe
+## ⚡ Utilisation Rapide
 
-### 1️⃣ Collecter les SIREN (GRATUIT)
+### Version ÉCONOMIQUE (Recommandée) 💰
+
 ```bash
+# 1. Collecter les SIREN (GRATUIT)
 npm run fetch
-```
-→ Génère `output/sirens_interim_75_92.csv`
 
-### 2️⃣ Enrichir avec Pappers (PAYANT)
+# 2. Enrichir - Version ÉCO (0,1 crédit/résultat)
+npm run enrich:seniors:eco
+```
+→ Génère `output/dirigeants_seniors_eco.csv`
+
+### Version Classique (Si CA nécessaire)
+
 ```bash
+# 1. Collecter les SIREN (GRATUIT)
+npm run fetch
+
+# 2. Enrichir - Version complète (1-2 crédits/entreprise)
 npm run enrich:seniors:simple
 ```
 → Génère `output/dirigeants_seniors_enrichis.csv`
 
-## 📊 Données Collectées
+## 📊 Comparaison des Méthodes
 
-Pour chaque dirigeant né avant 1962, le script récupère :
-- **Société** : Nom de l'entreprise
-- **SIREN** : Numéro d'identification
-- **Chiffre d'affaires** : CA de l'entreprise
-- **Résultat** : Bénéfice/Perte
-- **Dirigeant** : Nom, prénom, fonction
-- **Âge** : Année de naissance et âge actuel
-- **Localisation** : Ville du siège
-- **Activité** : Code NAF et effectif
+| Méthode | Coût | Données | Cas d'usage |
+|---------|------|---------|------------|
+| **ECO** ✨ | 0,1 crédit/dirigeant | Société, SIREN, Dirigeant, Âge | Identification rapide |
+| **Classique** | 1-2 crédits/entreprise | + CA, Résultat, Effectif | Analyse financière |
 
-## 🚀 Installation Rapide
+**Exemple sur 1300 entreprises** :
+- Version ECO : ~20 crédits (~0,40€)
+- Version Classique : ~1300 crédits (~26€)
+- **Économie : 98% !** 🎉
 
-```bash
-# 1. Cloner le projet
-git clone https://github.com/Bencode92/CompanySearch.git
-cd CompanySearch
+## 🎯 Objectif
 
-# 2. Installer les dépendances
-npm install
-
-# 3. Configurer la clé API Pappers
-cp .env.example .env
-# Éditer .env et ajouter votre clé PAPPERS_API_KEY
-```
-
-## 🤖 Automatisation GitHub Actions
-
-### Workflow "Enrich Senior Directors Simple"
-
-1. **Aller dans Actions** → "Enrich Senior Directors Simple"
-2. **Cliquer sur "Run workflow"**
-3. **Télécharger les résultats** dans les Artifacts
-
-**Prérequis** :
-- Configurer `PAPPERS_API_KEY` dans Settings → Secrets → Actions
-- Le fichier `sirens_interim_75_92.csv` doit exister
-
-### Automatisation complète
-
-- **Vendredi 5h** : Collecte automatique des SIREN (workflow "Get SIREN List Paris-92")
-- **Lundi 6h** : Enrichissement automatique des dirigeants seniors
-- **Résultats** : Téléchargeables dans les artifacts ou directement dans le repo
-
-## 📈 Exemple de Résultat
-
-```csv
-Société;SIREN;Chiffre d'affaires;Résultat;Nom dirigeant;Prénom dirigeant;Fonction;Année naissance;Âge actuel
-INTERIM PLUS;123456789;5 234 000;234 000;DUPONT;Jean;Président;1960;64
-TRAVAIL TEMPO;987654321;2 100 000;-50 000;MARTIN;Pierre;Gérant;1958;66
-```
-
-## 💰 Coûts Estimés
-
-- **Collecte SIREN** : GRATUIT (API gouvernementale)
-- **Enrichissement Pappers** : ~0.02€ par entreprise
-- **Exemple** : 500 entreprises = ~10€
-
-## 🎯 Cas d'Usage Business
-
-### Succession d'entreprise
-Les dirigeants de 62+ ans sont des cibles privilégiées pour :
-- Transmission d'entreprise
-- Rachat/Reprise
+**Identifier les dirigeants seniors (62+ ans)** des entreprises d'intérim de Paris et Hauts-de-Seine pour :
+- Opportunités de succession/transmission
 - Services de conseil en cession
 - Accompagnement retraite
 
-### Critères de ciblage
-- **Âge** : 62 ans et plus (nés avant 1962)
-- **Secteur** : Intérim (NAF 78.20Z)
-- **Zone** : Paris (75) et Hauts-de-Seine (92)
-- **Données financières** : CA et résultat disponibles
+## 📦 Installation
+
+```bash
+git clone https://github.com/Bencode92/CompanySearch.git
+cd CompanySearch
+npm install
+
+# Configurer la clé API Pappers
+cp .env.example .env
+# Éditer .env et ajouter PAPPERS_API_KEY
+```
+
+## 🤖 GitHub Actions
+
+### 3 Workflows disponibles :
+
+1. **"Get SIREN List Paris-92"** (GRATUIT)
+   - Collecte automatique tous les vendredis
+   - Génère `sirens_interim_75_92.csv`
+
+2. **"Enrich Senior Directors ECO"** (ÉCONOMIQUE)
+   - 0,1 crédit par dirigeant trouvé
+   - Idéal pour identification rapide
+
+3. **"Enrich Senior Directors Simple"** (COMPLET)
+   - Inclut CA et résultat
+   - Pour analyse financière approfondie
+
+## 📈 Workflow Recommandé
+
+```mermaid
+graph LR
+    A[1. Collecte SIREN<br/>GRATUIT] --> B[2. Enrichissement ECO<br/>0,1 crédit/résultat]
+    B --> C[3. Liste dirigeants seniors]
+    C --> D[4. Si CA nécessaire<br/>Enrichir sous-ensemble]
+```
+
+## 📊 Données Collectées
+
+### Version ECO
+- Société (nom)
+- SIREN / SIRET siège
+- Dirigeant (nom, prénom, fonction)
+- Date de naissance et âge
+- Ville du siège
+
+### Version Classique
+- Tout ce qui précède +
+- Chiffre d'affaires
+- Résultat
+- Effectif
+- Code NAF
+
+## 💡 Conseils d'Optimisation
+
+1. **Toujours commencer par la version ECO** pour identifier les cibles
+2. **Enrichir avec CA** uniquement sur les entreprises pertinentes
+3. **Tester sur 100 SIREN** avant le traitement complet
+4. **Ajuster l'année cutoff** selon vos besoins (défaut: 1962)
 
 ## 📝 Scripts Disponibles
 
 | Commande | Description | Coût |
 |----------|-------------|------|
 | `npm run fetch` | Collecte SIREN Paris + 92 | GRATUIT |
-| `npm run enrich:seniors:simple` | Enrichit dirigeants 62+ ans | PAYANT |
+| `npm run enrich:seniors:eco` | **Version ÉCO** - 62+ ans | 0,1 crédit/résultat |
+| `npm run enrich:seniors:simple` | Version complète - 62+ ans | 1-2 crédits/entreprise |
 | `npm run estimate` | Estime le volume | GRATUIT |
 
-## ⚠️ Notes Importantes
+## 📁 Structure des Fichiers
+
+```
+output/
+├── sirens_interim_75_92.csv     # SIREN collectés (étape 1)
+├── dirigeants_seniors_eco.csv   # Version ECO (étape 2)
+└── dirigeants_seniors_enrichis.csv # Version complète
+```
+
+## 💰 Estimation des Coûts
+
+Pour ~1300 entreprises d'intérim (Paris + 92) :
+
+| Méthode | Crédits | Coût estimé | Économie |
+|---------|---------|-------------|----------|
+| ECO | ~20 | ~0,40€ | 98% |
+| Classique | ~1300 | ~26€ | 0% |
+
+## 🔗 Ressources
+
+- [Comparaison détaillée ECO vs Classique](COMPARAISON_ECO.md)
+- [Guide rapide dirigeants seniors](GUIDE_SENIORS.md)
+- [API Pappers](https://www.pappers.fr/api)
+- [API Gouvernementale](https://api.gouv.fr/les-api/api-recherche-entreprises)
+
+## ⚠️ Important
 
 - **RGPD** : Respecter la réglementation sur les données personnelles
-- **Limite API** : Pappers limite le nombre de requêtes/seconde
-- **Vérification** : Toujours vérifier que le fichier SIREN existe avant enrichissement
+- **Clé API** : Nécessaire pour Pappers (payant)
+- **Rate Limiting** : Les scripts gèrent automatiquement les limites
 
 ## 🆘 Support
 
-- **Problème ?** → [Ouvrir une issue](https://github.com/Bencode92/CompanySearch/issues)
-- **API Pappers** → [Documentation](https://www.pappers.fr/api)
-- **API Gouv** → [Documentation](https://api.gouv.fr/les-api/api-recherche-entreprises)
-
-## 📊 Workflow Complet
-
-```mermaid
-graph LR
-    A[1. npm run fetch] --> B[sirens_interim_75_92.csv]
-    B --> C[2. npm run enrich:seniors:simple]
-    C --> D[dirigeants_seniors_enrichis.csv]
-    D --> E[3. Ouvrir dans Excel]
-    E --> F[4. Trier par CA/Résultat]
-    F --> G[5. Prospection ciblée]
-```
-
-## ✨ Fonctionnalités Avancées
-
-Pour des besoins plus complexes, des scripts avancés sont disponibles :
-
-- **Multi-départements** : Toute l'Île-de-France
-- **Multi-NAF** : Plusieurs secteurs d'activité
-- **Filtres avancés** : CA min/max, effectifs, villes
-- **Formats multiples** : CSV, JSON, Excel
-
-Voir `scripts/fetch_idf_advanced.js` et `scripts/enrich_pappers_advanced.js` pour plus d'options.
+Problème ? → [Ouvrir une issue](https://github.com/Bencode92/CompanySearch/issues)
 
 ---
 
-**💡 Conseil** : Commencez par un test sur 100 entreprises pour valider le processus avant de traiter l'ensemble des données.
+**💡 Astuce** : La version ECO utilise `/recherche-dirigeants` qui ne facture que les résultats retournés. Parfait pour cibler uniquement les dirigeants seniors sans payer pour les entreprises sans dirigeants éligibles !
