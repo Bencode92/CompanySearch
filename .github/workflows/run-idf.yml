@@ -9,9 +9,10 @@ jobs:
     permissions:
       contents: write
     env:
-      # Optionnel : token Pappers pour raffiner via l'objet social
+      # Clé Pappers (header `api-key`). On tente d'abord PAPPERS_API_KEY puis fallback sur PAPPERS_TOKEN.
+      PAPPERS_API_KEY: ${{ secrets.PAPPERS_API_KEY || secrets.PAPPERS_TOKEN }}
       PAPPERS_TOKEN: ${{ secrets.PAPPERS_TOKEN }}
-      # Liste de mots-clés HCR (utilisée par le script)
+      # (Optionnel) Liste de mots-clés HCR si votre script les lit via l’ENV
       HCR_KEYWORDS: "hôtellerie,hotellerie,hôtel,hotel,restauration,restaurant,traiteur,housekeeping,room service,r\u00e9ception,bar,serveur,serveuse,barman,barmaid,cuisine,commis,chef de partie,femme de chambre,valet de chambre,gouvernante,banquet,événementiel,evenementiel,CHR,HCR"
 
     steps:
@@ -22,10 +23,20 @@ jobs:
           node-version: '20'
 
       - name: Install
-        run: npm ci
+        run: npm ci || npm i --no-audit --no-fund
+
+      - name: Check Pappers key
+        run: |
+          if [ -z "$PAPPERS_API_KEY" ]; then
+            echo "❌ Secret PAPPERS_API_KEY ou PAPPERS_TOKEN manquant."
+            exit 1
+          fi
+          echo "✅ Clé Pappers détectée"
 
       - name: Fetch SIREN (HCR) from departments 75 and 92
-        run: npm run fetch
+        # Utilise votre script `npm run fetch` s'il pointe vers Pappers,
+        # sinon fallback vers `scripts/fetch-hcr-precise.js`
+        run: npm run fetch --silent || node scripts/fetch-hcr-precise.js
 
       - name: Verify CSV was created
         run: |
@@ -43,9 +54,9 @@ jobs:
       - name: List files for verification
         run: |
           echo "📁 Contenu du dossier input:"
-          ls -la input/
+          ls -la input/ || true
           echo "📁 Contenu du dossier output:"
-          ls -la output/
+          ls -la output/ || true
 
       - name: Upload CSV as artifact
         uses: actions/upload-artifact@v4
@@ -54,12 +65,13 @@ jobs:
           path: |
             input/sirens.csv
             output/sirens_interim_HCR_75_92.csv
+          retention-days: 90
 
       - name: Commit output
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add -f input/*.csv
-          git add -f output/*.csv
+          git add -f input/*.csv || true
+          git add -f output/*.csv || true
           git commit -m "update SIREN list - agences d'intérim (78.20Z) HCR - Paris (75) & Hauts-de-Seine (92)" || echo "No changes to commit"
-          git push
+          git push || true
