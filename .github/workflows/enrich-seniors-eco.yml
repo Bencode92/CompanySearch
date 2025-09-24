@@ -3,11 +3,6 @@ name: Enrich Senior Directors ECO
 on:
   workflow_dispatch:
     inputs:
-      cutoff_year:
-        description: "Garder uniquement les dirigeants nés AVANT cette année"
-        required: false
-        default: "1962"
-        type: string
       input_file:
         description: "CSV d'entrée (SIREN par ligne)"
         required: false
@@ -16,7 +11,7 @@ on:
       output_file:
         description: "CSV de sortie"
         required: false
-        default: "output/dirigeants_seniors_eco.csv"
+        default: "output/dirigeants_eco.csv"
         type: string
 
   schedule:
@@ -54,31 +49,27 @@ jobs:
       - name: Enrichissement ÉCONOMIQUE (0,1 crédit/dirigeant)
         env:
           PAPPERS_API_KEY: ${{ secrets.PAPPERS_API_KEY }}
+          # Optionnel: pour remplir la colonne Objet_social avec /entreprise (coûts)
+          PAPPERS_FETCH_ENTREPRISE: "0"
         run: |
           if [ -z "$PAPPERS_API_KEY" ]; then
             echo "❌ Secret PAPPERS_API_KEY manquant !"
             exit 1
           fi
           node scripts/enrich_seniors_eco.js \
-            --cutoff-year="${{ inputs.cutoff_year || '1962' }}" \
             --in="${{ inputs.input_file || 'output/sirens_interim_75_92.csv' }}" \
-            --out="${{ inputs.output_file || 'output/dirigeants_seniors_eco.csv' }}"
+            --out="${{ inputs.output_file || 'output/dirigeants_eco.csv' }}"
 
       - name: Analyze results
         id: analyze
         run: |
-          OUT="${{ inputs.output_file || 'output/dirigeants_seniors_eco.csv' }}"
+          OUT="${{ inputs.output_file || 'output/dirigeants_eco.csv' }}"
           if [ -f "$OUT" ]; then
             LINES=$(tail -n +2 "$OUT" | wc -l)
             echo "dirigeants_count=$LINES" >> $GITHUB_OUTPUT
-            SIREN_COUNT=${{ steps.check_input.outputs.siren_count }}
             CREDITS_USED=$(echo "scale=1; $LINES * 0.1" | bc)
-            CREDITS_SAVED=$(echo "scale=1; $SIREN_COUNT - $CREDITS_USED" | bc)
-            MONEY_SAVED=$(echo "scale=2; $CREDITS_SAVED * 0.02" | bc)
             echo "credits_used=$CREDITS_USED" >> $GITHUB_OUTPUT
-            echo "credits_saved=$CREDITS_SAVED" >> $GITHUB_OUTPUT
-            echo "money_saved=$MONEY_SAVED" >> $GITHUB_OUTPUT
-            head -n 11 "$OUT" | column -t -s ';' || true
+            head -n 11 "$OUT" | column -t -s ','
           else
             echo "dirigeants_count=0" >> $GITHUB_OUTPUT
           fi
@@ -87,26 +78,24 @@ jobs:
         if: steps.analyze.outputs.dirigeants_count != '0'
         uses: actions/upload-artifact@v4
         with:
-          name: dirigeants-seniors-eco-${{ github.run_number }}
-          path: ${{ inputs.output_file || 'output/dirigeants_seniors_eco.csv' }}
+          name: dirigeants-eco-${{ github.run_number }}
+          path: ${{ inputs.output_file || 'output/dirigeants_eco.csv' }}
           retention-days: 90
 
       - name: Commit results
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          OUT="${{ inputs.output_file || 'output/dirigeants_seniors_eco.csv' }}"
+          OUT="${{ inputs.output_file || 'output/dirigeants_eco.csv' }}"
           git add -f "$OUT" 2>/dev/null || true
           COUNT="${{ steps.analyze.outputs.dirigeants_count || '0' }}"
-          CUTOFF="${{ inputs.cutoff_year || '1962' }}"
           CREDITS="${{ steps.analyze.outputs.credits_used || '0' }}"
-          git commit -m "ECO: $COUNT dirigeants (nés<$CUTOFF) - ${CREDITS} crédits" || echo "Pas de changements"
+          git commit -m "ECO: $COUNT dirigeants (Président) - ~${CREDITS} crédits" || echo "Pas de changements"
           git push || true
 
       - name: Summary
         run: |
-          echo "# 💰 Enrichissement ÉCO - Dirigeants seniors" >> $GITHUB_STEP_SUMMARY
+          echo "# 💰 Enrichissement ÉCO - Dirigeants (sans filtre d'âge)" >> $GITHUB_STEP_SUMMARY
           echo "- Entreprises traitées: ${{ steps.check_input.outputs.siren_count }}" >> $GITHUB_STEP_SUMMARY
           echo "- Dirigeants trouvés: ${{ steps.analyze.outputs.dirigeants_count }}" >> $GITHUB_STEP_SUMMARY
           echo "- Crédits utilisés (≈): ${{ steps.analyze.outputs.credits_used }}" >> $GITHUB_STEP_SUMMARY
-          echo "- Économie (≈): ~${{ steps.analyze.outputs.money_saved }}€" >> $GITHUB_STEP_SUMMARY
