@@ -6,16 +6,13 @@ on:
       input_file:
         description: "CSV d'entrée (SIREN par ligne)"
         required: false
-        default: "output/sirens_interim_75_92.csv"
+        default: "output/sirens_interim_HCR_75_92.csv"
         type: string
       output_file:
         description: "CSV de sortie"
         required: false
         default: "output/dirigeants_eco.csv"
         type: string
-
-  schedule:
-    - cron: "0 6 * * 1"
 
 jobs:
   enrich-seniors-eco:
